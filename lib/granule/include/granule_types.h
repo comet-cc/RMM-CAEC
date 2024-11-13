@@ -183,6 +183,9 @@
  *   - Assigned s2tte.
  */
 #define GRANULE_STATE_RTT		6U
+#define GRANULE_STATE_DATA              7U
+#define GRANULE_STATE_APT               8U
+#define GRANULE_STATE_CSDATA            9U
 #define GRANULE_STATE_LAST		GRANULE_STATE_RTT
 
 /*

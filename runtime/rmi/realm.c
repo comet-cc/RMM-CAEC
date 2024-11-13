@@ -441,7 +441,7 @@ unsigned long smc_realm_create(unsigned long rd_addr,
 	(void)memcpy(&rd->rpv[0], &p.rpv[0], RPV_SIZE);
 
 	rd->s2_ctx.vmid = (unsigned int)p.vmid;
-
+//	VERBOSE("vmid = %x \n", rd->s2_ctx.vmid);
 	rd->num_rec_aux = MAX_REC_AUX_GRANULES;
 
 	rd->simd_cfg.sve_en = EXTRACT(RMI_REALM_FLAGS_SVE, p.flags) != 0UL;
