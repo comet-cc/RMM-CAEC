@@ -212,6 +212,8 @@ struct granule {
 	 *    access.
 	 */
 	unsigned long refcount;
+       // unsigned int vmid;
+	//bool shared;
 };
 
 #endif /* GRANULE_TYPES_H */

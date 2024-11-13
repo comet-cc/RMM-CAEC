@@ -66,7 +66,8 @@ target_sources(rmm-runtime
             "rsi/psci.c"
             "rsi/realm_ipa_helper.c"
             "rsi/realm_attest.c"
-            "rsi/system.c")
+            "rsi/system.c"
+            "rsi/shared_memory.c")
 
 arm_config_option(
     NAME RMM_MAX_SIZE

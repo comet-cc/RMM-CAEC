@@ -46,7 +46,8 @@ static const struct rsi_handler rsi_logger[] = {
 	RSI_FUNCTION(_REALM_CONFIG, 1U, 0U),		/* 0xC4000196 */
 	RSI_FUNCTION(_IPA_STATE_SET, 4U, 2U),		/* 0xC4000197 */
 	RSI_FUNCTION(_IPA_STATE_GET, 1U, 1U),		/* 0xC4000198 */
-	RSI_FUNCTION(_HOST_CALL, 1U, 0U)		/* 0xC4000199 */
+	RSI_FUNCTION(_HOST_CALL, 1U, 0U),		/* 0xC4000199 */
+        RSI_FUNCTION(_SHARED_MEMORY_SET, 4U, 2U)        /* 0xC400019a */
 };
 
 #define RSI_STATUS_STRING(_id)[RSI_##_id] = #_id
