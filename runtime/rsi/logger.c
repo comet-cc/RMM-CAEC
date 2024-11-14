@@ -73,7 +73,7 @@ static size_t print_entry(unsigned int id, unsigned long args[],
 	int cnt;
 
 	switch (id) {
-	case SMC_RSI_VERSION ... SMC_RSI_HOST_CALL: {
+	case SMC_RSI_VERSION ... SMC_RSI_SHARED_MEMORY_SET: {
 		const struct rsi_handler *logger = fid_to_rsi_logger(id);
 
 		num = logger->num_args;
