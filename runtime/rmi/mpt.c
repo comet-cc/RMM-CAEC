@@ -26,6 +26,7 @@
 struct mpt {
 	unsigned long test;
 };
+
 unsigned long smc_mpt_create(unsigned long rd_addr,
 			     unsigned long mpt_addr,
 			     unsigned long mpt_params_addr)
