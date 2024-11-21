@@ -1,12 +1,3 @@
-/*
- * SPDX-License-Identifier: BSD-3-Clause
- * SPDX-FileCopyrightText: Copyright TF-RMM Contributors.
- */
-
-#ifndef REC_H
-#define REC_H
-
-#ifndef __ASSEMBLER__
 
 #include <arch.h>
 #include <attestation_token.h>
@@ -22,12 +13,21 @@
 
 struct granule;
 
+struct host_mem {
+        unsigned long guest_rd_pa;
+        unsigned long ipa;
+};
+struct guest_mem {
+        unsigned long host_rd_pa;
+        unsigned long ipa;
+};
+
 struct mpt {
 	unsigned long test;
+	struct host_mem host_memory;
+	struct guest_mem guest_memory;
 };
 
 COMPILER_ASSERT(sizeof(struct mpt) <= GRANULE_SIZE);
 
 
-#endif /* __ASSEMBLER__ */
-#endif /* REC_H */
