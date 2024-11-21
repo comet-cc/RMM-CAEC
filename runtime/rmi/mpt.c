@@ -23,9 +23,9 @@
 #include <string.h>
 #include <mpt.h>
 
-struct mpt {
-	unsigned long test;
-};
+//struct mpt {
+//	unsigned long test;
+//};
 
 unsigned long smc_mpt_create(unsigned long rd_addr,
 			     unsigned long mpt_addr,
@@ -39,7 +39,7 @@ unsigned long smc_mpt_create(unsigned long rd_addr,
         struct rd *rd;
 //        struct rmi_mpt_params mpt_params;
 	//unsigned long rec_idx;
-        enum granule_state new_mpt_state = GRANULE_STATE_DELEGATED;
+        enum granule_state new_mpt_state = GRANULE_STATE_MPT;
         unsigned long ret;
 //        bool ns_access_ok;
 //	g_mpt_params = find_granule(mpt_params_addr);
@@ -72,6 +72,8 @@ unsigned long smc_mpt_create(unsigned long rd_addr,
                 ret = RMI_ERROR_REALM;
                 goto out_unmap;
         }
+	// later we initialize this value in the initial content of RD created by the hypervisor
+	rd->mpt_pa =  mpt_addr;
 	INFO("this is test value %lx \n", mpt->test);
 	mpt->test = 10;
 	INFO("this is test value %lx \n", mpt->test);

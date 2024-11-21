@@ -62,6 +62,8 @@ struct rd {
 
 	/* Realm Personalization Value */
 	unsigned char rpv[RPV_SIZE];
+
+	unsigned long mpt_pa;
 };
 COMPILER_ASSERT((U(offsetof(struct rd, measurement)) & 7U) == 0U);
 COMPILER_ASSERT(sizeof(struct rd) <= GRANULE_SIZE);
@@ -227,8 +229,14 @@ struct s2_walk_result {
 enum s2_walk_status realm_ipa_to_pa(struct rec *rec,
 				    unsigned long ipa,
 				    struct s2_walk_result *s2_walk);
+enum s2_walk_status realm_ipa_to_pa_with_rd(struct rd *rd,
+                                    unsigned long ipa,
+                                    struct s2_walk_result *s2_walk);
 
 enum s2_walk_status realm_ipa_get_ripas(struct rec *rec, unsigned long start,
 					unsigned long end, unsigned long *top,
 					enum ripas *ripas_ptr);
+unsigned long map_ipa_to_pa(struct rd *rd,
+                                 unsigned long pa_addr,
+                                 unsigned long ipa_addr);
 #endif /* REALM_H */
