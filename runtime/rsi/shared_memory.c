@@ -45,7 +45,6 @@ void handle_rsi_shared_memory_set_host(struct rec *rec,
         g_mpt = find_lock_granule(mpt_pa, GRANULE_STATE_MPT);
         mpt = granule_map(g_mpt, SLOT_MPT);
         assert(mpt != NULL);
-     
 	mpt->host_memory.guest_rd_pa = dest_rd_pa;
         mpt->host_memory.ipa = base_ipa;
 	buffer_unmap(rd);
@@ -64,7 +63,7 @@ void handle_rsi_shared_memory_set_guest(struct rec *rec,
                               struct rsi_result *res)
 {
 	unsigned long base_ipa = rec->regs[1];
-        unsigned long dest_rd_pa = rec->regs[3];
+        unsigned long host_rd_pa = rec->regs[3];
         struct rd *rd;
         unsigned long mpt_pa;
         struct granule *g_mpt;
@@ -175,9 +174,6 @@ void handle_rsi_shared_memory_set_mapping(struct rec *rec,
         res->smc_res.x[1] = walk_res.pa;
 	res->smc_res.x[2] = ipa;
 }
-
-
-
 
 
 
