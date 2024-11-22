@@ -6,6 +6,7 @@
 #include <buffer.h>
 #include <granule.h>
 #include <realm.h>
+#include <debug.h>
 
 /**
  * Translate a realm granule IPA to PA.
@@ -150,12 +151,15 @@ enum s2_walk_status realm_ipa_to_pa_with_rd(struct rd *rd,
 	assert(ll_table != NULL);
 
 	s2tte = s2tte_read(&ll_table[wi.index]);
-
+	INFO("s2tte-1 = %lx \n", s2tte);
 	if (s2tte_is_assigned_ram(s2tte, wi.last_level)) {
 		s2_walk->llt = wi.g_llt; /* Must be unlocked by caller */
 		s2_walk->pa = s2tte_pa(s2tte, wi.last_level);
+		INFO("s2_walk->pa = %lx \n", s2_walk->pa);
 		offset = ipa & (s2tte_map_size(wi.last_level) - 1UL);
+		INFO("offset = %lx \n", offset);
 		s2_walk->pa += offset;
+		INFO("s2_walk->pa = %lx \n", s2_walk->pa);
 		s2_walk->ripas_val = RIPAS_RAM;
 		walk_status = WALK_SUCCESS;
 	} else {
@@ -255,21 +259,25 @@ unsigned long map_ipa_to_pa(struct rd *rd,
 	if (wi.last_level != RTT_PAGE_LEVEL) {
 //                ret = pack_return_code(RMI_ERROR_RTT,
  //                                      (unsigned int)wi.last_level);
-                goto out_unlock_ll_table;
+		INFO("sdsdsd %lx \n", wi.last_level);
+		
+              goto out_unlock_ll_table;
         }
 	s2tt = granule_map(wi.g_llt, SLOT_RTT);
         assert(s2tt != NULL);
 
         s2tte = s2tte_read(&s2tt[wi.index]);
-        if (!s2tte_is_unassigned(s2tte)) {
+        //if (!s2tte_is_unassigned(s2tte)) {
              //   ret = pack_return_code(RMI_ERROR_RTT, RTT_PAGE_LEVEL);
-                goto out_unmap_ll_table;
-        }
+	//	 INFO("sdsdsd-2 \n");
+          //      goto out_unmap_ll_table;
+        //}
 //	s2tte = s2tte_create_assigned_unchanged(s2tte, pa_addr, RTT_PAGE_LEVEL);
 //	s2tte = s2tte_create_assigned_ram(pa_addr, RTT_PAGE_LEVEL);
 //        new_data_state = GRANULE_STATE_DATA;
 	if (s2tte_is_assigned_ram(s2tte, wi.last_level)) {
 	s2tte = s2tte_create_assigned_ram(pa_addr, RTT_PAGE_LEVEL);
+	INFO("s2tte-2 = %lx \n", s2tte);
         s2tte_write(&s2tt[wi.index], s2tte);
 	}
 //        __granule_get(wi.g_llt);
@@ -278,7 +286,7 @@ unsigned long map_ipa_to_pa(struct rd *rd,
 
 //        ret = RMI_SUCCESS;
 
-out_unmap_ll_table:
+//out_unmap_ll_table:
         buffer_unmap(s2tt);
 out_unlock_ll_table:
         granule_unlock(wi.g_llt);

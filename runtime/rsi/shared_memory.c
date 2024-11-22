@@ -45,7 +45,7 @@ void handle_rsi_shared_memory_set_host(struct rec *rec,
         g_mpt = find_lock_granule(mpt_pa, GRANULE_STATE_MPT);
         mpt = granule_map(g_mpt, SLOT_MPT);
         assert(mpt != NULL);
-     
+
 	mpt->host_memory.guest_rd_pa = host_rd_pa;
         mpt->host_memory.ipa = base_ipa;
 	buffer_unmap(rd);
