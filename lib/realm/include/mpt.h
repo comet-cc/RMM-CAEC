@@ -15,11 +15,13 @@ struct granule;
 
 struct host_mem {
         unsigned long guest_rd_pa;
-        unsigned long ipa;
+        unsigned long ipa_start;
+	unsigned long map_size;
 };
 struct guest_mem {
         unsigned long host_rd_pa;
-        unsigned long ipa;
+        unsigned long ipa_start;
+	unsigned long map_size;
 };
 
 struct mpt {
