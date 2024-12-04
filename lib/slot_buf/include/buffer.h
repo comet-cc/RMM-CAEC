@@ -22,6 +22,7 @@ enum buffer_slot {
 	 */
 	SLOT_DELEGATED,
 	SLOT_RD,
+	SLOT_RD2,
 	SLOT_REC,
 	SLOT_REC2,		/* Some commands access two REC granules at a time*/
 	SLOT_REC_TARGET,	/* Target REC for interrupts */

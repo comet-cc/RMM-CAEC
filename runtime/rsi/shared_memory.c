@@ -17,7 +17,7 @@ void handle_rsi_shared_memory_set(struct rec *rec,
 			      struct rmi_rec_exit *rec_exit,
 			      struct rsi_result *res)
 {
-	unsigned long flag = rec->regs[2];
+	unsigned long flag = rec->regs[1];
 	if (flag == 0)
 		handle_rsi_shared_memory_set_host(rec, rec_exit, res);
 	if (flag == 1)
@@ -47,6 +47,7 @@ void handle_rsi_shared_memory_set_host(struct rec *rec,
         assert(mpt != NULL);
 	mpt->host_memory.guest_rd_pa = dest_rd_pa;
         mpt->host_memory.ipa = base_ipa;
+
 	buffer_unmap(rd);
 	granule_unlock(rec->realm_info.g_rd);
         buffer_unmap(mpt);
@@ -55,6 +56,7 @@ void handle_rsi_shared_memory_set_host(struct rec *rec,
         res->smc_res.x[0] = RSI_SUCCESS;
 	res->smc_res.x[1] = dest_rd_pa;
 	res->smc_res.x[2] = base_ipa;
+	res->smc_res.x[3] = size_ipa;
 }
 
 
@@ -62,8 +64,9 @@ void handle_rsi_shared_memory_set_guest(struct rec *rec,
                               struct rmi_rec_exit *rec_exit,
                               struct rsi_result *res)
 {
-	unsigned long base_ipa = rec->regs[1];
-        unsigned long host_rd_pa = rec->regs[3];
+	unsigned long base_ipa = rec->regs[2];
+	unsigned long size_ipa = rec->regs[3];
+	unsigned long host_rd_pa = rec->regs[4];
         struct rd *rd;
         unsigned long mpt_pa;
         struct granule *g_mpt;
@@ -96,6 +99,7 @@ void handle_rsi_shared_memory_set_mapping(struct rec *rec,
                               struct rmi_rec_exit *rec_exit,
                               struct rsi_result *res)
 {
+<<<<<<< HEAD
 	struct rd *rd, *dest_rd;
 	struct granule *g_dest_rd;
         unsigned long mpt_pa, mpt_pa_host;
@@ -105,25 +109,25 @@ void handle_rsi_shared_memory_set_mapping(struct rec *rec,
         struct mpt *mpt;
 	unsigned long addr;
  	enum s2_walk_status walk_status;
-	// 1- Finding the target rd and then mpt
         granule_lock(rec->realm_info.g_rd, GRANULE_STATE_RD);
-        rd = granule_map(rec->realm_info.g_rd, SLOT_RD);
-        assert(rd != NULL);
-        mpt_pa = rd->mpt_pa;
-        buffer_unmap(rd);
-        granule_unlock(rec->realm_info.g_rd);
+        guest_rd = granule_map(rec->realm_info.g_rd, SLOT_RD);
+        assert(guest_rd != NULL);
+        mpt_pa = guest_rd->mpt_pa;
+        //buffer_unmap(rd);
+        //granule_unlock(rec->realm_info.g_rd);
 
         g_mpt = find_lock_granule(mpt_pa, GRANULE_STATE_MPT);
         mpt = granule_map(g_mpt, SLOT_MPT);
         assert(mpt != NULL);
-        ipa = mpt->guest_memory.ipa;
+        guest_ipa_start = mpt->guest_memory.ipa_start;
+	guest_ipa_size = mpt->guest_memory.map_size;
 	host_rd_pa = mpt->guest_memory.host_rd_pa;
 	buffer_unmap(mpt);
 	// Might be better to keep the mpt locked before finalizing everything
 	granule_unlock(g_mpt);
 	INFO("test \n");
-	buffer_unmap(rd);
-        granule_unlock(rec->realm_info.g_rd);
+	//buffer_unmap(rd);
+        //granule_unlock(rec->realm_info.g_rd);
 
 	g_dest_rd = find_lock_granule(host_rd_pa, GRANULE_STATE_RD);
         if (g_dest_rd == NULL) {
@@ -171,8 +175,8 @@ void handle_rsi_shared_memory_set_mapping(struct rec *rec,
 	 INFO("test343 \n");
 	res->action = UPDATE_REC_RETURN_TO_REALM;
         res->smc_res.x[0] = RSI_SUCCESS;
-        res->smc_res.x[1] = walk_res.pa;
-	res->smc_res.x[2] = ipa;
+//        res->smc_res.x[1] = walk_res.pa;
+//	res->smc_res.x[2] = host_ipa_start;
 }
 
 
