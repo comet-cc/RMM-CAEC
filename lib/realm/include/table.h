@@ -36,6 +36,7 @@ unsigned long s2tte_create_unassigned_ns(void);
 unsigned long s2tte_create_unassigned_destroyed(void);
 unsigned long s2tte_create_assigned_empty(unsigned long pa, long level);
 unsigned long s2tte_create_assigned_ram(unsigned long pa, long level);
+unsigned long s2tte_create_assigned_ram_read_only(unsigned long pa, long level);
 unsigned long s2tte_create_assigned_ns(unsigned long s2tte, long level);
 unsigned long s2tte_create_assigned_destroyed(unsigned long pa, long level);
 unsigned long s2tte_create_assigned_unchanged(unsigned long s2tte,

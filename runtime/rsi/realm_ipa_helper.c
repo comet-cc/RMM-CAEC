@@ -273,7 +273,8 @@ unsigned long map_ipa_to_pa(struct rd *rd,
 //	s2tte = s2tte_create_assigned_ram(pa_addr, RTT_PAGE_LEVEL);
 //        new_data_state = GRANULE_STATE_DATA;
 	if (s2tte_is_assigned_ram(s2tte, wi.last_level)) {
-	s2tte = s2tte_create_assigned_ram(pa_addr, RTT_PAGE_LEVEL);
+	//s2tte = s2tte_create_assigned_ram(pa_addr, RTT_PAGE_LEVEL);
+	s2tte = s2tte_create_assigned_ram_read_only(pa_addr, RTT_PAGE_LEVEL);
         s2tte_write(&s2tt[wi.index], s2tte);
 	}
 //        __granule_get(wi.g_llt);

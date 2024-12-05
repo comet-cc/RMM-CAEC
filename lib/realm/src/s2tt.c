@@ -46,6 +46,7 @@
 #define S2TTE_AP_SHIFT			6
 #define S2TTE_AP_MASK			(3UL << S2TTE_AP_SHIFT)
 #define S2TTE_AP_RW			(3UL << S2TTE_AP_SHIFT)
+#define S2TTE_AP_RONLY                  (1UL << S2TTE_AP_SHIFT)
 
 #define S2TTE_SH_SHIFT			8
 #define S2TTE_SH_MASK			(3UL << S2TTE_SH_SHIFT)
@@ -65,12 +66,16 @@
 
 #define S2TTE_ATTRS	(S2TTE_MEMATTR_FWB_NORMAL_WB | S2TTE_AP_RW | \
 			S2TTE_SH_IS | S2TTE_AF)
+#define S2TTE_ATTRS_RONLY     (S2TTE_MEMATTR_FWB_NORMAL_WB | S2TTE_AP_RONLY | \
+                               S2TTE_SH_IS | S2TTE_AF)
 #define S2TTE_NS_ATTR_MASK (S2TTE_MEMATTR_MASK | S2TTE_AP_MASK | \
 			    S2TTE_SH_MASK)
 
 #define S2TTE_TABLE	S2TTE_L012_TABLE
 #define S2TTE_BLOCK	(S2TTE_ATTRS | S2TTE_L012_BLOCK)
-#define S2TTE_PAGE	(S2TTE_ATTRS | S2TTE_L3_PAGE)
+#define S2TTE_BLOCK_RONLY     (S2TTE_ATTRS_RONLY | S2TTE_L012_BLOCK)
+#define S2TTE_PAGE      (S2TTE_ATTRS | S2TTE_L3_PAGE)
+#define S2TTE_PAGE_RONLY	(S2TTE_ATTRS_RONLY | S2TTE_L3_PAGE)
 #define S2TTE_BLOCK_NS	(S2TTE_NS | S2TTE_XN | S2TTE_AF | S2TTE_L012_BLOCK)
 #define S2TTE_PAGE_NS	(S2TTE_NS | S2TTE_XN | S2TTE_AF | S2TTE_L3_PAGE)
 #define S2TTE_INVALID	S2TTE_Lx_INVALID
@@ -458,7 +463,20 @@ unsigned long s2tte_create_assigned_ram(unsigned long pa, long level)
 	if (level == RTT_PAGE_LEVEL) {
 		return (pa | S2TTE_PAGE);
 	}
-	return (pa | S2TTE_BLOCK);
+	return (pa |S2TTE_BLOCK);
+}
+
+/*
+ * Creates an assigned_ram s2tte with output address @pa. This address is read-only from the point of view of realm
+ */
+unsigned long s2tte_create_assigned_ram_read_only(unsigned long pa, long level)
+{
+        assert(level >= RTT_MIN_BLOCK_LEVEL);
+        assert(addr_is_level_aligned(pa, level));
+        if (level == RTT_PAGE_LEVEL) {
+                return (pa | S2TTE_PAGE_RONLY);
+        }
+        return (pa |S2TTE_BLOCK_RONLY);
 }
 
 /*
