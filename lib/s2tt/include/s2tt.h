@@ -98,6 +98,7 @@ bool s2tte_has_ripas(const struct s2tt_context *s2_ctx,
 
 unsigned long s2tte_create_unassigned_empty(const struct s2tt_context *s2_ctx);
 unsigned long s2tte_create_unassigned_ram(const struct s2tt_context *s2_ctx);
+unsigned long s2tte_create_assigned_ram_read_only(unsigned long pa, long level);
 unsigned long s2tte_create_unassigned_ns(const struct s2tt_context *s2_ctx);
 unsigned long s2tte_create_unassigned_destroyed(const struct s2tt_context *s2_ctx);
 

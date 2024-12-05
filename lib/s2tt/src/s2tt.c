@@ -487,6 +487,17 @@ unsigned long s2tte_create_assigned_ram(const struct s2tt_context *s2_ctx,
 				     S2TTE_INVALID_RIPAS_RAM);
 }
 
+unsigned long s2tte_create_assigned_ram_read_only(const struct s2tt_context *s2_ctx,
+                                        unsigned long pa, long level)
+{
+	assert(level >= RTT_MIN_BLOCK_LEVEL);
+        assert(addr_is_level_aligned(pa, level));
+        if (level == RTT_PAGE_LEVEL) {
+                return (pa | S2TTE_PAGE_RONLY);
+        }
+        return (pa |S2TTE_BLOCK_RONLY);
+}
+
 /*
  * Creates an assigned s2tte with output address @pa and the same
  * RIPAS as passed on @s2tte.
