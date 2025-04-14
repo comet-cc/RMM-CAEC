@@ -24,10 +24,17 @@ struct guest_mem {
 	unsigned long map_size;
 };
 
+struct shared_key {
+	unsigned long master_rd_pa;
+	unsigned long slave_rd_pa;
+	unsigned long key;
+};
+
 struct mpt {
 	unsigned long test;
 	struct host_mem host_memory;
 	struct guest_mem guest_memory;
+	struct shared_key shared_key;
 };
 
 COMPILER_ASSERT(sizeof(struct mpt) <= GRANULE_SIZE);

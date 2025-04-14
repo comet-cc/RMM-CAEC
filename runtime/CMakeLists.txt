@@ -68,6 +68,7 @@ target_sources(rmm-runtime
             "rsi/realm_ipa_helper.c"
             "rsi/realm_attest.c"
             "rsi/system.c"
+	    "rsi/shared_key.c"
             "rsi/shared_memory.c")
 
 arm_config_option(

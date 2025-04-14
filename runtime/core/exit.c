@@ -442,6 +442,9 @@ static bool handle_realm_rsi(struct rec *rec, struct rmi_rec_exit *rec_exit)
 	case SMC_RSI_SHARED_MEMORY_SET:
 		handle_rsi_shared_memory_set(rec, rec_exit, &res);
 		break;
+	case SMC_RSI_SHARED_KEY_SET:
+                handle_rsi_shared_memory_set(rec, rec_exit, &res);
+                break;
 	default:
 		res.action = UPDATE_REC_RETURN_TO_REALM;
 		res.smc_res.x[0] = SMC_UNKNOWN;

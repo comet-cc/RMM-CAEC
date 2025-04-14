@@ -23,37 +23,19 @@
 #include <string.h>
 #include <mpt.h>
 
-//struct mpt {
-//	unsigned long test;
-//};
 
 unsigned long smc_mpt_create(unsigned long rd_addr,
 			     unsigned long mpt_addr,
 			     unsigned long mpt_params_addr)
 {
 	INFO("this is smc_mpt_create \n");
+\
 	struct granule *g_rd;
         struct granule *g_mpt;
-        //struct granule *g_mpt_params;
         struct mpt *mpt;
         struct rd *rd;
-//        struct rmi_mpt_params mpt_params;
-	//unsigned long rec_idx;
         enum granule_state new_mpt_state = GRANULE_STATE_MPT;
         unsigned long ret;
-//        bool ns_access_ok;
-//	g_mpt_params = find_granule(mpt_params_addr);
-//        if ((g_mpt_params == NULL) || (g_mpt_params->state != GRANULE_STATE_NS)) {
-
-  //              return RMI_ERROR_INPUT;
-//	}
-
-  //      ns_access_ok = ns_buffer_read(SLOT_NS, g_mpt_params, 0U,
-    //                                  sizeof(mpt_params), &mpt_params);
-
-      //  if (!ns_access_ok) {
-       //         return RMI_ERROR_INPUT;
-       // }
 
         if (!find_lock_two_granules(mpt_addr,
                                 GRANULE_STATE_DELEGATED, &g_mpt,
@@ -78,12 +60,14 @@ unsigned long smc_mpt_create(unsigned long rd_addr,
 	mpt->test = 10;
 	INFO("this is test value %lx \n", mpt->test);
 	ret = RMI_SUCCESS;
+	goto out_unmap;
 out_unmap:
         buffer_unmap(rd);
         buffer_unmap(mpt);
 
         granule_unlock(g_rd);
         granule_unlock_transition(g_mpt, new_mpt_state);
+	return ret;
 
 out_free_aux:
         if (ret != RMI_SUCCESS) {

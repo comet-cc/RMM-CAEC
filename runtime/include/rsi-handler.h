@@ -103,4 +103,14 @@ void handle_rsi_shared_memory_set_guest(struct rec *rec, struct rmi_rec_exit *re
                  struct rsi_result *res);
 void handle_rsi_shared_memory_set_mapping(struct rec *rec, struct rmi_rec_exit *rec_exit,
                  struct rsi_result *res);
+
+void handle_rsi_shared_key(struct rec *rec, struct rmi_rec_exit *rec_exit,
+                 struct rsi_result *res);
+void handle_rsi_shared_key_set_master(struct rec *rec, struct rmi_rec_exit *rec_exit,
+                 struct rsi_result *res);
+void handle_rsi_shared_key_set_slave(struct rec *rec, struct rmi_rec_exit *rec_exit,
+                 struct rsi_result *res);
+void handle_rsi_shared_key_get(struct rec *rec, struct rmi_rec_exit *rec_exit,
+                 struct rsi_result *res);
+
 #endif /* RSI_HANDLER_H */
