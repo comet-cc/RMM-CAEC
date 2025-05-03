@@ -96,8 +96,8 @@ void smc_rtt_set_ripas(unsigned long rd_addr,
 			unsigned long top,
 			struct smc_result *res);
 
-unsigned long smc_mpt_create(unsigned long rd_addr,
+unsigned long smc_apt_create(unsigned long rd_addr,
 			unsigned long rec_addr,
 			unsigned long rec_params_addr);
-unsigned long smc_mpt_destroy(unsigned long rec_addr);
+unsigned long smc_apt_destroy(unsigned long rd_addr, unsigned long apt_addr);
 #endif /* SMC_HANDLER_H */

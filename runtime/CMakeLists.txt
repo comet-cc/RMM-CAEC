@@ -53,7 +53,7 @@ target_sources(rmm-runtime
             "rmi/granule.c"
             "rmi/realm.c"
             "rmi/rec.c"
-            "rmi/mpt.c"
+            "rmi/apt.c"
             "rmi/rtt.c"
             "rmi/run.c"
             "rmi/system.c")

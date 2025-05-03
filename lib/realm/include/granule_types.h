@@ -157,7 +157,7 @@ enum granule_state {
 	 *
 	 * No references are held on this granule type.
 	 */
-	GRANULE_STATE_MPT,
+	GRANULE_STATE_APT,
         GRANULE_STATE_DATA,
 	/*
 	 * RTT Granule (internal)

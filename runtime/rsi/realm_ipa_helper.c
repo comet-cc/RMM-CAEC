@@ -135,7 +135,6 @@ enum s2_walk_status realm_ipa_to_pa_with_rd(struct rd *rd,
 	int sl;
 	 unsigned long ipa_bits;
 
-//	if (!GRANULE_ALIGNED(ipa) || !addr_in_rec_par(rec)) {
 		if (!GRANULE_ALIGNED(ipa)) {
 		return WALK_INVALID_PARAMS;
 	}
@@ -151,15 +150,11 @@ enum s2_walk_status realm_ipa_to_pa_with_rd(struct rd *rd,
 	assert(ll_table != NULL);
 
 	s2tte = s2tte_read(&ll_table[wi.index]);
-//	INFO("s2tte-1 = %lx \n", s2tte);
 	if (s2tte_is_assigned_ram(s2tte, wi.last_level)) {
 		s2_walk->llt = wi.g_llt; /* Must be unlocked by caller */
 		s2_walk->pa = s2tte_pa(s2tte, wi.last_level);
-//		INFO("s2_walk->pa = %lx \n", s2_walk->pa);
 		offset = ipa & (s2tte_map_size(wi.last_level) - 1UL);
-//		INFO("offset = %lx \n", offset);
 		s2_walk->pa += offset;
-//		INFO("s2_walk->pa = %lx \n", s2_walk->pa);
 
 		s2_walk->ripas_val = RIPAS_RAM;
 		walk_status = WALK_SUCCESS;
@@ -248,7 +243,6 @@ unsigned long map_ipa_to_pa(struct rd *rd,
         ///enum granule_state new_data_state = GRANULE_STATE_DELEGATED;
         unsigned long ipa_bits;
 //	unsigned long ret;
-        int __unused meas_ret;
         int sl;
 
  	g_table_root = rd->s2_ctx.g_rtt;
@@ -288,4 +282,71 @@ out_unlock_ll_table:
         granule_unlock(wi.g_llt);
 //        granule_unlock_transition(g_data, new_data_state);
         return 0;
+}
+
+#define ALIGN_2MB (2UL * 1024 * 1024)
+
+int is_2mb_aligned(unsigned long addr) {
+    return (addr & (ALIGN_2MB - 1)) == 0;
+}
+
+unsigned long copy_page_table(struct rd *master_rd, struct rd *slave_rd,
+                                 unsigned long master_ipa,
+                                 unsigned long slave_ipa)
+{
+	struct granule *g_table_root, *g_table_root_slave;
+        struct rtt_walk wi, wi_slave;
+//	unsigned long s2tte, *s2tt, *s2tt_slave;
+        unsigned long ipa_bits, ipa_bits_slave;
+        int sl, sl_slave;
+	if (!(is_2mb_aligned(master_ipa) && is_2mb_aligned(slave_ipa))){
+		printf("Addresses 0x%lx or 0x%lx are not 2MB aligned.\n", master_ipa, slave_ipa);
+		return 0;
+	}
+
+ 	g_table_root = master_rd->s2_ctx.g_rtt;
+	sl = realm_rtt_starting_level(master_rd);
+	ipa_bits = realm_ipa_bits(master_rd);
+	granule_lock(g_table_root, GRANULE_STATE_RTT);
+        rtt_walk_lock_unlock(g_table_root, sl, ipa_bits,
+                             master_ipa, RTT_PAGE_LEVEL, &wi);
+	if (wi.last_level != RTT_PAGE_LEVEL) {
+              goto out_unlock_ll_table;
+		 INFO("out_unlock_ll_table2 \n");
+        }
+	void *s2tt = granule_map(wi.g_llt, SLOT_RTT2);
+        assert(s2tt != NULL);
+
+	g_table_root_slave = slave_rd->s2_ctx.g_rtt;
+        sl_slave = realm_rtt_starting_level(slave_rd);
+        ipa_bits_slave = realm_ipa_bits(slave_rd);
+        granule_lock(g_table_root_slave, GRANULE_STATE_RTT);
+        rtt_walk_lock_unlock(g_table_root_slave, sl_slave, ipa_bits_slave,
+                             slave_ipa, RTT_PAGE_LEVEL, &wi_slave);
+        if (wi_slave.last_level != RTT_PAGE_LEVEL) {
+		INFO("out_unlock_ll_table2 \n");
+              goto out_unlock_ll_table2;
+        }
+        void *s2tt_slave = granule_map(wi_slave.g_llt, SLOT_RTT);
+        assert(s2tt_slave != NULL);
+
+	memcpy(s2tt_slave, s2tt, GRANULE_SIZE);
+	INFO("Copied rtt with starting address 0x%lx from master to slave starting address 0x%lx \n", master_ipa, slave_ipa);
+	struct realm_s2_context s2_ctx = slave_rd->s2_ctx;
+	invalidate_pages_in_block(&s2_ctx, slave_ipa);
+
+        buffer_unmap(s2tt);
+	buffer_unmap(s2tt_slave);
+	granule_unlock(wi_slave.g_llt);
+	granule_unlock(wi.g_llt);
+
+out_unlock_ll_table:
+        granule_unlock(wi.g_llt);
+        return 0;
+
+out_unlock_ll_table2:
+ 	buffer_unmap(s2tt);
+	granule_unlock(wi_slave.g_llt);
+	granule_unlock(wi.g_llt);
+	return 0;
 }

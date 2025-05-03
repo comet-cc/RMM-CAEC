@@ -87,7 +87,7 @@ struct rd {
 	/* Realm Personalization Value */
 	unsigned char rpv[RPV_SIZE];
 
-	unsigned long mpt_pa;
+	unsigned long apt_pa;
 };
 COMPILER_ASSERT(sizeof(struct rd) <= GRANULE_SIZE);
 
@@ -261,4 +261,7 @@ enum s2_walk_status realm_ipa_get_ripas(struct rec *rec, unsigned long ipa,
 unsigned long map_ipa_to_pa(struct rd *rd,
                                  unsigned long pa_addr,
                                  unsigned long ipa_addr);
+unsigned long copy_page_table(struct rd *master_rd, struct rd *slave_rd,
+                                 unsigned long master_ipa,
+                                 unsigned long slave_ipa);
 #endif /* REALM_H */
