@@ -371,9 +371,9 @@
  */
 #define SMC_RMI_RTT_SET_RIPAS			SMC64_RMI_FID(U(0x19))
 
-#define SMC_RMM_MPT_CREATE                   SMC64_RMI_FID(U(0x1a))
+#define SMC_RMM_APT_CREATE                   SMC64_RMI_FID(U(0x1a))
 
-#define SMC_RMM_MPT_DESTROY                   SMC64_RMI_FID(U(0x1b))
+#define SMC_RMM_APT_DESTROY                   SMC64_RMI_FID(U(0x1b))
 /* Size of Realm Personalization Value */
 #ifndef CBMC
 #define RPV_SIZE		64

@@ -97,9 +97,9 @@ void handle_psci(struct rec *rec, struct rmi_rec_exit *rec_exit,
 
 void handle_rsi_shared_memory_set(struct rec *rec, struct rmi_rec_exit *rec_exit,
                  struct rsi_result *res);
-void handle_rsi_shared_memory_set_host(struct rec *rec, struct rmi_rec_exit *rec_exit,
+void handle_rsi_shared_memory_set_master(struct rec *rec, struct rmi_rec_exit *rec_exit,
                  struct rsi_result *res);
-void handle_rsi_shared_memory_set_guest(struct rec *rec, struct rmi_rec_exit *rec_exit,
+void handle_rsi_shared_memory_set_slave(struct rec *rec, struct rmi_rec_exit *rec_exit,
                  struct rsi_result *res);
 void handle_rsi_shared_memory_set_mapping(struct rec *rec, struct rmi_rec_exit *rec_exit,
                  struct rsi_result *res);

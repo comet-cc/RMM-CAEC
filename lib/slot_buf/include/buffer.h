@@ -37,6 +37,8 @@ enum buffer_slot {
 	SLOT_EL3_TOKEN_SIGN_REC,	/* Slot for target REC during EL3 sign flow */
 	SLOT_EL3_TOKEN_SIGN_AUX0,	/* Slots for AUX granules on target REC for EL3 sign flow */
   	SLOT_MPT,
+        SLOT_APT,
+        SLOT_APT2,
 	NR_CPU_SLOTS = U(SLOT_EL3_TOKEN_SIGN_AUX0) + MAX_REC_AUX_GRANULES
 };
 
