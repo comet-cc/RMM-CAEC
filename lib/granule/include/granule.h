@@ -93,7 +93,7 @@ static inline void __granule_assert_unlocked_invariants(struct granule *g,
 		assert(REFCOUNT(g) == 0U);
 		break;
 	case GRANULE_STATE_CSDATA:
-                assert(g->refcount == 0UL);
+                assert(REFCOUNT(g) == 0U);
                 break;
 	case GRANULE_STATE_RTT:
 		/* Refcount cannot be greater than number of entries in an RTT */
