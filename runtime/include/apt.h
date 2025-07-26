@@ -25,6 +25,8 @@ struct slave_mem {
 };
 
 struct apt {
+	unsigned long csdata_ipa_begin;
+	unsigned long csdata_ipa_end;
 	unsigned long test;
 	struct master_mem master_memory;
 	struct slave_mem slave_memory;

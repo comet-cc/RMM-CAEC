@@ -24,6 +24,16 @@ unsigned long smc_data_create_unknown(unsigned long rd_addr,
 				      unsigned long data_addr,
 				      unsigned long map_addr);
 
+unsigned long smc_csdata_create(unsigned long rd_addr,
+                              unsigned long data_addr,
+                              unsigned long map_addr,
+                              unsigned long src_addr,
+                              unsigned long flags);
+
+void smc_csdata_destroy(unsigned long rd_addr,
+                      unsigned long map_addr,
+                      struct smc_result *res);
+
 void smc_data_destroy(unsigned long rd_addr,
 		      unsigned long map_addr,
 		      struct smc_result *res);

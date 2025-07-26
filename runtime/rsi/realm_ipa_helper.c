@@ -353,14 +353,10 @@ unsigned long map_ipa_to_pa(struct rd *rd,
                                  unsigned long pa_addr,
                                  unsigned long ipa_addr)
 {
-       // struct granule *g_data;
-        //struct granule *g_rd;
 	struct granule *g_table_root;
         struct rtt_walk wi;
 	unsigned long s2tte, *s2tt;
-        ///enum granule_state new_data_state = GRANULE_STATE_DELEGATED;
         unsigned long ipa_bits;
-//	unsigned long ret;
         int sl;
 
  	g_table_root = rd->s2_ctx.g_rtt;
@@ -393,7 +389,6 @@ unsigned long map_ipa_to_pa(struct rd *rd,
 	INFO("s2tte-2 = %lx \n", s2tte);
         s2tte_write(&s2tt[wi.index], s2tte);
 	}
-//        __granule_get(wi.g_llt);
 	struct realm_s2_context s2_ctx = rd->s2_ctx;
 	invalidate_page(&s2_ctx, ipa_addr);
 
@@ -419,7 +414,6 @@ unsigned long copy_page_table(struct rd *master_rd, struct rd *slave_rd,
 {
 	struct granule *g_table_root, *g_table_root_slave;
         struct rtt_walk wi, wi_slave;
-//	unsigned long s2tte, *s2tt, *s2tt_slave;
         unsigned long ipa_bits, ipa_bits_slave;
         int sl, sl_slave;
 	if (!(is_2mb_aligned(master_ipa) && is_2mb_aligned(slave_ipa))){

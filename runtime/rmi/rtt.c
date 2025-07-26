@@ -1026,6 +1026,27 @@ unsigned long smc_data_create(unsigned long rd_addr,
 	return data_create(rd_addr, data_addr, map_addr, g_src, flags);
 }
 
+unsigned long smc_csdata_create(unsigned long rd_addr,
+                              unsigned long data_addr,
+                              unsigned long map_addr,
+                              unsigned long src_addr,
+                              unsigned long flags)
+{
+        struct granule *g_src;
+
+        if ((flags != RMI_NO_MEASURE_CONTENT) &&
+            (flags != RMI_MEASURE_CONTENT)) {
+                return RMI_ERROR_INPUT;
+        }
+
+        g_src = find_granule(src_addr);
+        if ((g_src == NULL) || (g_src->state != GRANULE_STATE_NS)) {
+                return RMI_ERROR_INPUT;
+        }
+
+        return data_create(rd_addr, data_addr, map_addr, g_src, flags);
+}
+
 unsigned long smc_data_create_unknown(unsigned long rd_addr,
 				      unsigned long data_addr,
 				      unsigned long map_addr)
@@ -1121,7 +1142,12 @@ out_unmap_ll_table:
 	buffer_unmap(s2tt);
 	granule_unlock(wi.g_llt);
 }
-
+void smc_csdata_destroy(unsigned long rd_addr,
+                      unsigned long map_addr,
+                      struct smc_result *res)
+{
+	res->x[0] = RMI_SUCCESS;
+}
 /*
  * Update the ripas value for the entry pointed by @s2ttep.
  *

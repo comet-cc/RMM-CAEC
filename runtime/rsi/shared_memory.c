@@ -57,6 +57,12 @@ void handle_rsi_shared_memory_set_master(struct rec *rec,
 	res->smc_res.x[1] = dest_rd_pa;
 	res->smc_res.x[2] = base_ipa;
 	res->smc_res.x[3] = size_ipa;
+	goto unmap;
+unmap:
+	buffer_unmap(rd);
+        granule_unlock(rec->realm_info.g_rd);
+        buffer_unmap(apt);
+        granule_unlock(g_apt);
 }
 
 
