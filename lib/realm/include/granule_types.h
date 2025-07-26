@@ -157,8 +157,9 @@ enum granule_state {
 	 *
 	 * No references are held on this granule type.
 	 */
-	GRANULE_STATE_APT,
         GRANULE_STATE_DATA,
+	GRANULE_STATE_APT,
+ 	GRANULE_STATE_CSDATA,
 	/*
 	 * RTT Granule (internal)
 	 *
@@ -186,7 +187,6 @@ enum granule_state {
 	 */
 	GRANULE_STATE_RTT,
 	GRANULE_STATE_LAST = GRANULE_STATE_RTT
-	
 };
 
 struct granule {

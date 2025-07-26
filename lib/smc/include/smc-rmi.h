@@ -364,6 +364,10 @@
 #define SMC_RMM_APT_CREATE                   SMC64_RMI_FID(U(0x1a))
 
 #define SMC_RMM_APT_DESTROY                   SMC64_RMI_FID(U(0x1b))
+
+#define SMC_RMM_CSDATA_CREATE             SMC64_RMI_FID(U(0x1c))
+
+#define SMC_RMM_CSDATA_DESTROY                    SMC64_RMI_FID(U(0x1d))
 /* Size of Realm Personalization Value */
 #define RPV_SIZE		64
 

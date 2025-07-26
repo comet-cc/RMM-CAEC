@@ -235,14 +235,10 @@ unsigned long map_ipa_to_pa(struct rd *rd,
                                  unsigned long pa_addr,
                                  unsigned long ipa_addr)
 {
-       // struct granule *g_data;
-        //struct granule *g_rd;
 	struct granule *g_table_root;
         struct rtt_walk wi;
 	unsigned long s2tte, *s2tt;
-        ///enum granule_state new_data_state = GRANULE_STATE_DELEGATED;
         unsigned long ipa_bits;
-//	unsigned long ret;
         int sl;
 
  	g_table_root = rd->s2_ctx.g_rtt;
@@ -252,10 +248,6 @@ unsigned long map_ipa_to_pa(struct rd *rd,
         rtt_walk_lock_unlock(g_table_root, sl, ipa_bits,
                              ipa_addr, RTT_PAGE_LEVEL, &wi);
 	if (wi.last_level != RTT_PAGE_LEVEL) {
-//                ret = pack_return_code(RMI_ERROR_RTT,
- //                                      (unsigned int)wi.last_level);
-//		INFO("sdsdsd %lx \n", wi.last_level);
-		
               goto out_unlock_ll_table;
         }
 	s2tt = granule_map(wi.g_llt, SLOT_RTT);
@@ -263,15 +255,11 @@ unsigned long map_ipa_to_pa(struct rd *rd,
 
         s2tte = s2tte_read(&s2tt[wi.index]);
 
-//	s2tte = s2tte_create_assigned_unchanged(s2tte, pa_addr, RTT_PAGE_LEVEL);
-//	s2tte = s2tte_create_assigned_ram(pa_addr, RTT_PAGE_LEVEL);
-//        new_data_state = GRANULE_STATE_DATA;
 	if (s2tte_is_assigned_ram(s2tte, wi.last_level)) {
-	//s2tte = s2tte_create_assigned_ram(pa_addr, RTT_PAGE_LEVEL);
-	s2tte = s2tte_create_assigned_ram_read_only(pa_addr, RTT_PAGE_LEVEL);
+//	s2tte = s2tte_create_assigned_ram_read_only(pa_addr, RTT_PAGE_LEVEL);
+ 	s2tte = s2tte_create_assigned_ram(pa_addr, RTT_PAGE_LEVEL);
         s2tte_write(&s2tt[wi.index], s2tte);
 	}
-//        __granule_get(wi.g_llt);
 	struct realm_s2_context s2_ctx = rd->s2_ctx;
 	invalidate_page(&s2_ctx, ipa_addr);
 
@@ -296,7 +284,6 @@ unsigned long copy_page_table(struct rd *master_rd, struct rd *slave_rd,
 {
 	struct granule *g_table_root, *g_table_root_slave;
         struct rtt_walk wi, wi_slave;
-//	unsigned long s2tte, *s2tt, *s2tt_slave;
         unsigned long ipa_bits, ipa_bits_slave;
         int sl, sl_slave;
 	if (!(is_2mb_aligned(master_ipa) && is_2mb_aligned(slave_ipa))){

@@ -47,19 +47,28 @@ void handle_rsi_shared_memory_set_master(struct rec *rec,
         g_apt = find_lock_granule(apt_pa, GRANULE_STATE_APT);
         apt = granule_map(g_apt, SLOT_APT);
         assert(apt != NULL);
-
+	/* check the range specified by the user at runtime to
+	be in the designated range during boot time */
+	if (apt->csdata_ipa_begin > base_ipa || apt->csdata_ipa_end < size_ipa) {
+		INFO("Out of range use of confidential shared memory \n");
+		INFO("apt->csdata_ipa_begin = %lx apt->csdata_ipa_end = %lx \n", apt->csdata_ipa_begin, apt->csdata_ipa_end);
+//		res->smc_res.x[0] = RSI_ERROR_INPUT;
+//		goto unmap;
+	}
 	apt->master_memory.slave_rd_pa = slave_rd_pa;
         apt->master_memory.ipa_start = base_ipa;
 	apt->master_memory.map_size = size_ipa;
-	buffer_unmap(rd);
-	granule_unlock(rec->realm_info.g_rd);
-        buffer_unmap(apt);
-        granule_unlock(g_apt);
 	res->action = UPDATE_REC_RETURN_TO_REALM;
         res->smc_res.x[0] = RSI_SUCCESS;
 	res->smc_res.x[1] = slave_rd_pa;
 	res->smc_res.x[2] = base_ipa;
 	res->smc_res.x[3] = size_ipa;
+	goto unmap;
+unmap:
+	buffer_unmap(rd);
+        granule_unlock(rec->realm_info.g_rd);
+        buffer_unmap(apt);
+        granule_unlock(g_apt);
 }
 
 
@@ -170,6 +179,7 @@ void handle_rsi_shared_memory_set_mapping(struct rec *rec,
 			INFO("walk_status = %d for master_ipa = %lx and phys_addr = %lx \n", walk_status, master_ipa, walk_res.pa);
 
 		// 5- Mapping the target walk_res.pa to the ipa, do we need to lock the pa during the mapping?
+		// Check for read-only feature of map_ipa_to_pa later
 			map_ipa_to_pa(slave_rd, walk_res.pa, slave_ipa);
 			INFO("mapped slave_ipa = %lx to phys_addr = %lx \n", slave_ipa, walk_res.pa);
 			slave_ipa += 0x1000;
