@@ -1040,9 +1040,10 @@ unsigned long smc_csdata_create(unsigned long rd_addr,
         }
 
         g_src = find_granule(src_addr);
-        if ((g_src == NULL) || (g_src->state != GRANULE_STATE_NS)) {
-                return RMI_ERROR_INPUT;
-        }
+	if ((g_src == NULL) ||
+		(granule_unlocked_state(g_src) != GRANULE_STATE_NS)) {
+		return RMI_ERROR_INPUT;
+	}
 
         return data_create(rd_addr, data_addr, map_addr, g_src, flags);
 }

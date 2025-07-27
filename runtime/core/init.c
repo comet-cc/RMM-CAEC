@@ -94,6 +94,8 @@ void rmm_main(void)
 		RSI_ABI_VERSION_MAJOR, RSI_ABI_VERSION_MINOR,
 		__DATE__, __TIME__);
 
+	NOTICE("C-PATH customized RMM \n");
+
 	rmm_warmboot_main();
 
 	simd_init();

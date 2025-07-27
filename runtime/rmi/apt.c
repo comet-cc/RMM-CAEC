@@ -33,7 +33,6 @@ unsigned long smc_apt_create(unsigned long rd_addr,
         struct granule *g_apt;
         struct apt *apt;
         struct rd *rd;
-        enum granule_state new_apt_state = GRANULE_STATE_APT;
         unsigned long ret;
 
         if (!find_lock_two_granules(apt_addr,
@@ -43,13 +42,13 @@ unsigned long smc_apt_create(unsigned long rd_addr,
                 ret = RMI_ERROR_INPUT;
                 goto out_free_aux;
 	}
- 	apt = granule_map(g_apt, SLOT_APT);
+ 	apt = buffer_granule_map(g_apt, SLOT_APT);
         assert(apt != NULL);
 
-        rd = granule_map(g_rd, SLOT_RD);
+        rd = buffer_granule_map(g_rd, SLOT_RD);
         assert(rd != NULL);
 
-	if (get_rd_state_locked(rd) != REALM_STATE_NEW) {
+	if (get_rd_state_locked(rd) != REALM_NEW) {
                 ret = RMI_ERROR_REALM;
                 goto out_unmap;
         }
@@ -65,7 +64,7 @@ out_unmap:
         buffer_unmap(apt);
 
         granule_unlock(g_rd);
-        granule_unlock_transition(g_apt, new_apt_state);
+        granule_unlock_transition(g_apt, GRANULE_STATE_APT);
 	return ret;
 
 out_free_aux:
@@ -81,18 +80,17 @@ unsigned long smc_apt_destroy(unsigned long rd_addr, unsigned long apt_addr)
 	struct rd *rd;
 	struct granule *g_rd;
 	g_rd = find_granule(rd_addr);
-	rd = granule_map(g_rd, SLOT_RD);
+	rd = buffer_granule_map(g_rd, SLOT_RD);
 	assert(rd != NULL);
 
 	if (rd->apt_pa != apt_addr){
 		ret = RMI_ERROR_REALM;
                 goto out_unmap;
 	}
-	//Todo: Need to define active/diactive state with apt struct in rd
 
 	g_apt = find_lock_granule(apt_addr, GRANULE_STATE_APT);
 	assert(g_apt != NULL);
-        granule_memzero(g_apt, SLOT_APT);
+        buffer_granule_memzero(g_apt, SLOT_APT);
         granule_unlock_transition(g_apt, GRANULE_STATE_DELEGATED);
 	buffer_unmap(rd);
         granule_unlock(g_rd);

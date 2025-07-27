@@ -423,38 +423,51 @@ unsigned long s2tte_create_unassigned_ns(const struct s2tt_context *s2_ctx)
  * Creates an invalid s2tte with output address @pa, HIPAS=ASSIGNED and
  * RIPAS=@s2tte_ripas, at level @level.
  */
+
 static unsigned long s2tte_create_assigned(const struct s2tt_context *s2_ctx,
-					   unsigned long pa, long level,
-					   unsigned long s2tte_ripas)
+                                           unsigned long pa, long level,
+                                           unsigned long s2tte_ripas)
 {
-	assert(level >= S2TT_MIN_BLOCK_LEVEL);
-	assert(level <= S2TT_PAGE_LEVEL);
-	assert(EXTRACT(S2TTE_INVALID_RIPAS, s2tte_ripas)
-		<= EXTRACT(S2TTE_INVALID_RIPAS, S2TTE_INVALID_RIPAS_DESTROYED));
-	assert(s2_ctx != NULL);
-	assert(s2tte_is_addr_lvl_aligned(s2_ctx, pa, level));
+        assert(level >= S2TT_MIN_BLOCK_LEVEL);
+        assert(level <= S2TT_PAGE_LEVEL);
+        /* Strip private flag before validating RIPAS field. */
+        unsigned long ripas_only = s2tte_ripas & S2TTE_INVALID_RIPAS_MASK;
+        assert(EXTRACT(S2TTE_INVALID_RIPAS, ripas_only)
+                <= EXTRACT(S2TTE_INVALID_RIPAS, S2TTE_INVALID_RIPAS_DESTROYED));
+        assert(s2_ctx != NULL);
+        assert(s2tte_is_addr_lvl_aligned(s2_ctx, pa, level));
 
-	unsigned long tte = pa_to_s2tte(pa, s2_ctx->enable_lpa2);
-	unsigned long s2tte_page, s2tte_block;
+        const bool want_ro = (s2tte_ripas & S2TTE_CREATE_FLAG_RO) != 0UL;
 
-	if (s2_ctx->enable_lpa2 == true) {
-		s2tte_page = S2TTE_PAGE_LPA2;
-		s2tte_block = S2TTE_BLOCK_LPA2;
-	} else {
-		s2tte_page = S2TTE_PAGE;
-		s2tte_block = S2TTE_BLOCK;
-	}
+        unsigned long tte = pa_to_s2tte(pa, s2_ctx->enable_lpa2);
+        unsigned long s2tte_page, s2tte_block;
+        unsigned long s2tte_page_ro, s2tte_block_ro;
 
-	if (s2tte_ripas == S2TTE_INVALID_RIPAS_RAM) {
-		if (level == S2TT_PAGE_LEVEL) {
-			return (tte | s2tte_page);
-		}
-		return (tte | s2tte_block);
-	}
+        if (s2_ctx->enable_lpa2) {
+                s2tte_page     = S2TTE_PAGE_LPA2;
+                s2tte_block    = S2TTE_BLOCK_LPA2;
+                s2tte_page_ro  = S2TTE_PAGE_LPA2_RO;
+                s2tte_block_ro = S2TTE_BLOCK_LPA2_RO;
+        } else {
+                s2tte_page     = S2TTE_PAGE;
+                s2tte_block    = S2TTE_BLOCK;
+                s2tte_page_ro  = S2TTE_PAGE_RO;
+                s2tte_block_ro = S2TTE_BLOCK_RO;
+        }
 
-	return (tte | S2TTE_INVALID_HIPAS_ASSIGNED | s2tte_ripas);
+        /* For RIPAS=RAM, return a valid mapping; choose RO/RW via descriptor. */
+        if (ripas_only == S2TTE_INVALID_RIPAS_RAM) {
+                if (level == S2TT_PAGE_LEVEL) {
+                        return (tte | (want_ro ? s2tte_page_ro : s2tte_page));
+                }
+                return (tte | (want_ro ? s2tte_block_ro : s2tte_block));
+        }
+
+        /* For EMPTY/DESTROYED, return invalid assigned descriptor.
+         * Do NOT propagate the private flag bit.
+         */
+        return (tte | S2TTE_INVALID_HIPAS_ASSIGNED | ripas_only);
 }
-
 /*
  * Creates and invalid s2tte with output address @pa, HIPAS=ASSIGNED and
  * RIPAS=DESTROYED at level @level.
@@ -490,12 +503,8 @@ unsigned long s2tte_create_assigned_ram(const struct s2tt_context *s2_ctx,
 unsigned long s2tte_create_assigned_ram_read_only(const struct s2tt_context *s2_ctx,
                                         unsigned long pa, long level)
 {
-	assert(level >= RTT_MIN_BLOCK_LEVEL);
-        assert(addr_is_level_aligned(pa, level));
-        if (level == RTT_PAGE_LEVEL) {
-                return (pa | S2TTE_PAGE_RONLY);
-        }
-        return (pa |S2TTE_BLOCK_RONLY);
+        return s2tte_create_assigned(s2_ctx, pa, level,
+                                     S2TTE_INVALID_RIPAS_RAM_READ_ONLY);
 }
 
 /*

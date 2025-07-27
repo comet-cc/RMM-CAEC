@@ -12,6 +12,7 @@
 #include <granule.h>
 #include <apt.h>
 #include <debug.h>
+#include <buffer.h>
 
 void handle_rsi_shared_memory_set(struct rec *rec,
 			      struct rmi_rec_exit *rec_exit,
@@ -31,30 +32,36 @@ void handle_rsi_shared_memory_set_master(struct rec *rec,
                               struct rmi_rec_exit *rec_exit,
                               struct rsi_result *res)
 {
-	unsigned long base_ipa = rec->regs[1];
-        unsigned long dest_rd_pa = rec->regs[3];
+	unsigned long base_ipa = rec->regs[2];
+        unsigned long size_ipa = rec->regs[3];
+	unsigned long slave_rd_pa = rec->regs[4];
+
         struct rd *rd;
 	unsigned long apt_pa;
 	struct granule *g_apt;
         struct apt *apt;
 	granule_lock(rec->realm_info.g_rd, GRANULE_STATE_RD);
-        rd = granule_map(rec->realm_info.g_rd, SLOT_RD);
+        rd = buffer_granule_map(rec->realm_info.g_rd, SLOT_RD);
         assert(rd != NULL);
         apt_pa = rd->apt_pa;
 
-        g_mpt = find_lock_granule(mpt_pa, GRANULE_STATE_MPT);
-        mpt = granule_map(g_mpt, SLOT_MPT);
-        assert(mpt != NULL);
-	mpt->host_memory.guest_rd_pa = dest_rd_pa;
-        mpt->host_memory.ipa = base_ipa;
-
-	buffer_unmap(rd);
-	granule_unlock(rec->realm_info.g_rd);
-        buffer_unmap(apt);
-        granule_unlock(g_apt);
+        g_apt = find_lock_granule(apt_pa, GRANULE_STATE_APT);
+        apt = buffer_granule_map(g_apt, SLOT_APT);
+        assert(apt != NULL);
+	/* check the range specified by the user at runtime to
+	be in the designated range during boot time */
+	if (apt->csdata_ipa_begin > base_ipa || apt->csdata_ipa_end < size_ipa) {
+		INFO("Out of range use of confidential shared memory \n");
+		INFO("apt->csdata_ipa_begin = %lx apt->csdata_ipa_end = %lx \n", apt->csdata_ipa_begin, apt->csdata_ipa_end);
+//		res->smc_res.x[0] = RSI_ERROR_INPUT;
+//		goto unmap;
+	}
+	apt->master_memory.slave_rd_pa = slave_rd_pa;
+        apt->master_memory.ipa_start = base_ipa;
+	apt->master_memory.map_size = size_ipa;
 	res->action = UPDATE_REC_RETURN_TO_REALM;
         res->smc_res.x[0] = RSI_SUCCESS;
-	res->smc_res.x[1] = dest_rd_pa;
+	res->smc_res.x[1] = slave_rd_pa;
 	res->smc_res.x[2] = base_ipa;
 	res->smc_res.x[3] = size_ipa;
 	goto unmap;
@@ -80,24 +87,27 @@ void handle_rsi_shared_memory_set_slave(struct rec *rec,
 
 
         granule_lock(rec->realm_info.g_rd, GRANULE_STATE_RD);
-        rd = granule_map(rec->realm_info.g_rd, SLOT_RD);
+        rd = buffer_granule_map(rec->realm_info.g_rd, SLOT_RD);
         assert(rd != NULL);
         apt_pa = rd->apt_pa;
 
-        g_mpt = find_lock_granule(mpt_pa, GRANULE_STATE_MPT);
-        mpt = granule_map(g_mpt, SLOT_MPT);
-        assert(mpt != NULL);
-        mpt->guest_memory.host_rd_pa = dest_rd_pa;
-        mpt->guest_memory.ipa = base_ipa;
+        g_apt = find_lock_granule(apt_pa, GRANULE_STATE_APT);
+        apt = buffer_granule_map(g_apt, SLOT_APT);
+        assert(apt != NULL);
+        apt->slave_memory.master_rd_pa = master_rd_pa;
+        apt->slave_memory.ipa_start = base_ipa;
+	apt->slave_memory.map_size = size_ipa;
 
 	buffer_unmap(rd);
 	granule_unlock(rec->realm_info.g_rd);
-        buffer_unmap(mpt);
-        granule_unlock(g_mpt);
-	res->action = UPDATE_REC_RETURN_TO_REALM;
+        buffer_unmap(apt);
+        granule_unlock(g_apt);
+ 	res->action = UPDATE_REC_RETURN_TO_REALM;
         res->smc_res.x[0] = RSI_SUCCESS;
-	res->smc_res.x[1] = dest_rd_pa;
-	res->smc_res.x[2] = base_ipa;
+        res->smc_res.x[1] = master_rd_pa;
+        res->smc_res.x[2] = base_ipa;
+ 	res->smc_res.x[3] = size_ipa;
+
 }
 
 
@@ -105,79 +115,96 @@ void handle_rsi_shared_memory_set_mapping(struct rec *rec,
                               struct rmi_rec_exit *rec_exit,
                               struct rsi_result *res)
 {
-	struct rd *rd, *dest_rd;
-	struct granule *g_dest_rd;
-        unsigned long mpt_pa, mpt_pa_host;
+	unsigned long block_mapping = rec->regs[3];
+	struct rd *slave_rd, *master_rd;
+	struct granule *g_master_rd;
+        unsigned long apt_pa, apt_pa_master;
         struct s2_walk_result walk_res;
-        unsigned long ipa, host_rd_pa;
-	struct granule *g_mpt;
-        struct mpt *mpt;
+        unsigned long master_ipa_start, master_ipa_size, master_rd_pa;
+	unsigned long slave_ipa_start, slave_ipa_size;
+	struct granule *g_apt_slave, *g_apt_master;
+        struct apt *apt_slave, *apt_master;
 	unsigned long addr;
  	enum s2_walk_status walk_status;
+
+	// 1- Finding the target rd and then apt
         granule_lock(rec->realm_info.g_rd, GRANULE_STATE_RD);
-        slave_rd = granule_map(rec->realm_info.g_rd, SLOT_RD);
+        slave_rd = buffer_granule_map(rec->realm_info.g_rd, SLOT_RD);
         assert(slave_rd != NULL);
         apt_pa = slave_rd->apt_pa;
 
         g_apt_slave = find_lock_granule(apt_pa, GRANULE_STATE_APT);
-        apt_slave = granule_map(g_apt_slave, SLOT_APT);
+        apt_slave = buffer_granule_map(g_apt_slave, SLOT_APT);
         assert(apt_slave != NULL);
         slave_ipa_start = apt_slave->slave_memory.ipa_start;
 	slave_ipa_size = apt_slave->slave_memory.map_size;
 	master_rd_pa = apt_slave->slave_memory.master_rd_pa;
 
-	g_dest_rd = find_lock_granule(host_rd_pa, GRANULE_STATE_RD);
-        if (g_dest_rd == NULL) {
-              //  res->x[0] = RMI_ERROR_INPUT;
+	g_master_rd = find_lock_granule(master_rd_pa, GRANULE_STATE_RD);
+        if (g_master_rd == NULL) {
+                res->smc_res.x[0] = RSI_ERROR_INPUT;
         	return;
         }
 
-        dest_rd = granule_map(g_dest_rd, SLOT_RD);
-        assert(dest_rd != NULL);
-        mpt_pa_host = dest_rd->mpt_pa;
+        master_rd = buffer_granule_map(g_master_rd, SLOT_RD2);
+        assert(master_rd != NULL);
+        apt_pa_master = master_rd->apt_pa;
 	INFO("test \n");
-        g_mpt = find_lock_granule(mpt_pa_host, GRANULE_STATE_MPT);
-        mpt = granule_map(g_mpt, SLOT_MPT);
-        assert(mpt != NULL);
-	 INFO("test3 \n");
+        g_apt_master = find_lock_granule(apt_pa_master, GRANULE_STATE_APT);
+        apt_master = buffer_granule_map(g_apt_master, SLOT_APT2);
+	master_ipa_start = apt_master->master_memory.ipa_start;
+        master_ipa_size = apt_master->master_memory.map_size;
+        assert(apt_master != NULL);
+	INFO("test3 \n");
 	// 2- Check whether the cuurent realm is allowed to map that address into its address space
 
 	addr = granule_addr(rec->realm_info.g_rd);
-        INFO("addr = %lx \n", addr);
-	INFO("mpt->host_memory.guest_rd_pa = %lx \n", mpt->host_memory.guest_rd_pa);
-	if (mpt->host_memory.guest_rd_pa != addr){
-		//res->x[0] = RMI_ERROR_INPUT;
+	if (apt_master->master_memory.slave_rd_pa != addr){
+		res->smc_res.x[0] = RSI_ERROR_INPUT;
+		INFO("Mismatching with RD addresses \n");
 		return;
 	}
-	INFO("test2131 \n");
-	INFO(" mpt->host_memory.ipa = %lx \n", mpt->host_memory.ipa);
-	// 3- Find physical address of that ipa, needs to unlock the last level page at the end
-	walk_status = realm_ipa_to_pa_with_rd(dest_rd, mpt->host_memory.ipa, &walk_res);
-	INFO(" walk_status = %d \n", walk_status);
-	buffer_unmap(dest_rd);
-	granule_unlock(g_dest_rd);
-	 INFO("tes4 \n");
-	granule_lock(rec->realm_info.g_rd, GRANULE_STATE_RD);
-        rd = granule_map(rec->realm_info.g_rd, SLOT_RD);
-        assert(rd != NULL);
- 	INFO("test5 \n");
-	// 4- Mapping the target walk_res.pa to the ipa, do we need to lock the pa during the mapping?
-	map_ipa_to_pa(rd, walk_res.pa, ipa);
-	INFO("test6 \n");
-	granule_unlock(walk_res.llt);
-	buffer_unmap(rd);
+	// 3- Checking size compatibility
+	if (master_ipa_size != slave_ipa_size){
+                res->smc_res.x[0] = RSI_ERROR_INPUT;
+                INFO("Mismatching with IPA master_ipa_size =0x%lx and slave_ipa_size=0x%lx \n", master_ipa_size, slave_ipa_size);
+                return;
+        }
+	INFO(" block_mapping = 0x%lx \n", block_mapping);
+	if (block_mapping == 0x0){
+		INFO(" apt_master->master_memory.ipa_start = %lx \n", apt_master->master_memory.ipa_start);
+		// 4- Loop Through IPA range and find the associated PA, then map them in the second realm's page tables. needs to unlock the last level page at the end
+		unsigned long slave_ipa = slave_ipa_start;
+		for (unsigned long master_ipa = master_ipa_start; master_ipa < master_ipa_start + master_ipa_size; master_ipa += 0x1000) {
+			walk_status = realm_ipa_to_pa_with_rd(master_rd, master_ipa, &walk_res);
+			INFO("walk_status = %d for master_ipa = %lx and phys_addr = %lx \n", walk_status, master_ipa, walk_res.pa);
+
+		// 5- Mapping the target walk_res.pa to the ipa, do we need to lock the pa during the mapping?
+		// Check for read-only feature of map_ipa_to_pa later
+			map_ipa_to_pa(slave_rd, walk_res.pa, slave_ipa);
+			INFO("mapped slave_ipa = %lx to phys_addr = %lx \n", slave_ipa, walk_res.pa);
+			slave_ipa += 0x1000;
+			granule_unlock(walk_res.llt);
+		}
+	} else if (block_mapping == 0x1){
+	INFO(" block mapping  is enabled \n");
+		unsigned long slave_ipa = slave_ipa_start;
+		for (unsigned long master_ipa = master_ipa_start; master_ipa < master_ipa_start + master_ipa_size; master_ipa += 0x200000){
+			copy_page_table(master_rd, slave_rd, master_ipa, slave_ipa);
+			slave_ipa += 0x200000;
+		}
+	}
+	buffer_unmap(apt_slave);
+	granule_unlock(g_apt_slave);
+	buffer_unmap(apt_master);
+	granule_unlock(g_apt_master);
+	buffer_unmap(slave_rd);
 	granule_unlock(rec->realm_info.g_rd);
-	buffer_unmap(mpt);
-        granule_unlock(g_mpt);
-	 INFO("test343 \n");
+	buffer_unmap(master_rd);
+	granule_unlock(g_master_rd);
 	res->action = UPDATE_REC_RETURN_TO_REALM;
         res->smc_res.x[0] = RSI_SUCCESS;
 }
-
-
-
-
-
 
 
 

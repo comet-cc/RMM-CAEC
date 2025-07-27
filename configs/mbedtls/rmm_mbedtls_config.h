@@ -21,7 +21,7 @@
 #include <stdio.h>
 
 /* This file is compatible with release 3.6.0 */
-#define MBEDTLS_CONFIG_VERSION         0x03060000
+#define MBEDTLS_CONFIG_VERSION         0x03040000
 
 /*
  * Configuration file to build mbed TLS with the required features for
