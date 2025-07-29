@@ -22,6 +22,8 @@
 #include <stddef.h>
 #include <string.h>
 #include <apt.h>
+#include <realm_tag.h>
+
 
 
 unsigned long smc_apt_create(unsigned long rd_addr,
@@ -44,10 +46,10 @@ unsigned long smc_apt_create(unsigned long rd_addr,
 		INFO("test 22 \n");
 	}
  	apt = buffer_granule_map(g_apt, SLOT_APT);
-        assert(apt != NULL);
+    assert(apt != NULL);
 
-        rd = buffer_granule_map(g_rd, SLOT_RD);
-        assert(rd != NULL);
+    rd = buffer_granule_map(g_rd, SLOT_RD);
+    assert(rd != NULL);
 
 	if (get_rd_state_locked(rd) != REALM_NEW) {
                 ret = RMI_ERROR_REALM;
@@ -59,6 +61,12 @@ unsigned long smc_apt_create(unsigned long rd_addr,
 	INFO("this is test value %lx \n", apt->test);
 	apt->test = 10;
 	INFO("this is test value %lx \n", apt->test);
+	// Create Unique Tag fo the realm
+	uint64_t tag;
+	(void)realm_tag_assign(rd_addr, &tag);
+	INFO("realm tag assigned %lx \n", tag);
+
+(void)realm_tag_assign(rd_addr, &tag);
 	ret = RMI_SUCCESS;
 	goto out_unmap;
 out_unmap:
@@ -90,7 +98,8 @@ unsigned long smc_apt_destroy(unsigned long rd_addr, unsigned long apt_addr)
 		ret = RMI_ERROR_REALM;
                 goto out_unmap;
 	}
-
+	// Remove Unique Tag for the realm
+	(void)realm_tag_remove(rd_addr);
 	g_apt = find_lock_granule(apt_addr, GRANULE_STATE_APT);
 	assert(g_apt != NULL);
         buffer_granule_memzero(g_apt, SLOT_APT);

@@ -77,7 +77,8 @@ target_sources(rmm-runtime
             "core/sysregs.c"
             "core/timers.c"
             "core/opencca_fwb.c"
-            "core/opencca_timers.c")
+            "core/opencca_timers.c"
+	    "core/realm_tag.c")
 
 target_sources(rmm-runtime
     PRIVATE "rmi/feature.c"
