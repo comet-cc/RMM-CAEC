@@ -41,6 +41,7 @@ unsigned long smc_apt_create(unsigned long rd_addr,
                                 GRANULE_STATE_RD, &g_rd)) {
                 ret = RMI_ERROR_INPUT;
                 goto out_free_aux;
+		INFO("test 22 \n");
 	}
  	apt = buffer_granule_map(g_apt, SLOT_APT);
         assert(apt != NULL);
@@ -50,6 +51,7 @@ unsigned long smc_apt_create(unsigned long rd_addr,
 
 	if (get_rd_state_locked(rd) != REALM_NEW) {
                 ret = RMI_ERROR_REALM;
+ 		INFO("test 23 \n");
                 goto out_unmap;
         }
 	// later we initialize this value in the initial content of RD created by the hypervisor
@@ -65,6 +67,7 @@ out_unmap:
 
         granule_unlock(g_rd);
         granule_unlock_transition(g_apt, GRANULE_STATE_APT);
+        INFO("test 24 \n");
 	return ret;
 
 out_free_aux:
