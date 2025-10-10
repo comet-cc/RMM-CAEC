@@ -107,7 +107,9 @@ void smc_rtt_set_ripas(unsigned long rd_addr,
 			struct smc_result *res);
 
 unsigned long smc_apt_create(unsigned long rd_addr,
-			unsigned long rec_addr,
-			unsigned long rec_params_addr);
+			unsigned long rec_addr, unsigned long apt_param_addr);
 unsigned long smc_apt_destroy(unsigned long rd_addr, unsigned long apt_addr);
+unsigned long check_valid_csrange(unsigned long rd_addr,
+				      unsigned long map_addr);
+//unsigned long check_master(struct apt *apt);
 #endif /* SMC_HANDLER_H */

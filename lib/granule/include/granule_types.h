@@ -184,7 +184,6 @@
  */
 #define GRANULE_STATE_RTT		6U
 #define GRANULE_STATE_APT               7U
-#define GRANULE_STATE_CSDATA            8U
 #define GRANULE_STATE_LAST		GRANULE_STATE_RTT
 
 /*
@@ -212,6 +211,7 @@
 
 struct granule {
 	uint16_t	descriptor;
+	uint8_t owner_tag;
 };
 
 /* Granule descriptor fields definitions */

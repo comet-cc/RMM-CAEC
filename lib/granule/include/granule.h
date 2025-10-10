@@ -92,9 +92,6 @@ static inline void __granule_assert_unlocked_invariants(struct granule *g,
 	case GRANULE_STATE_DATA:
 		assert(REFCOUNT(g) == 0U);
 		break;
-	case GRANULE_STATE_CSDATA:
-                assert(REFCOUNT(g) == 0U);
-                break;
 	case GRANULE_STATE_APT:
                 assert(REFCOUNT(g) == 0U);
                 break;

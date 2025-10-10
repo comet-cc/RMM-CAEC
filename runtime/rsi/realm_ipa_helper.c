@@ -272,13 +272,13 @@ unsigned long map_ipa_to_pa(struct rd *rd,
 
     s2tte = s2tte_read(&s2tt[wi.index]);
     
-	if (s2tte_is_assigned_ram(s2_ctx, s2tte, wi.last_level)) {
+	//if (s2tte_is_assigned_ram(s2_ctx, s2tte, wi.last_level)) {
         /* Replace with a mapping to pa_addr as RAM */
     	s2tte = s2tte_create_assigned_ram(s2_ctx, pa_addr, S2TT_PAGE_LEVEL);
         s2tte_write(&s2tt[wi.index], s2tte);
         /* Invalidate TLB for that IPA */
         s2tt_invalidate_page(s2_ctx, ipa_addr);
-    }
+  // }
 
     buffer_unmap(s2tt);
     granule_unlock(wi.g_llt);
@@ -290,7 +290,7 @@ unsigned long map_ipa_to_pa(struct rd *rd,
 int is_2mb_aligned(unsigned long addr) {
     return (addr & (ALIGN_2MB - 1)) == 0;
 }
-
+/*
 unsigned long copy_page_table(struct rd *master_rd, struct rd *slave_rd,
                                  unsigned long master_ipa,
                                  unsigned long slave_ipa)
@@ -316,7 +316,6 @@ unsigned long copy_page_table(struct rd *master_rd, struct rd *slave_rd,
     assert(s2tt_m != NULL);
 
 	
-    /* Walk to the L3 table containing slave_ipa */
     granule_lock(s_ctx->g_rtt, GRANULE_STATE_RTT);
     s2tt_walk_lock_unlock(s_ctx, slave_ipa, S2TT_PAGE_LEVEL, &wi_s);
     if (wi_s.last_level != S2TT_PAGE_LEVEL) {
@@ -329,11 +328,9 @@ unsigned long copy_page_table(struct rd *master_rd, struct rd *slave_rd,
     s2tt_s = buffer_granule_map(wi_s.g_llt, SLOT_RTT);
     assert(s2tt_s != NULL);;
 
-	  /* Copy the whole L3 page table (4KB) */
     memcpy(s2tt_s, s2tt_m, GRANULE_SIZE);
     INFO("Copied RTT entries at 0x%lx -> 0x%lx\n", master_ipa, slave_ipa);
 
-    /* Invalidate all pages in the 2MB block at slave_ipa */
     for (unsigned long a = slave_ipa; a < slave_ipa + ALIGN_2MB; a += GRANULE_SIZE) {
         s2tt_invalidate_page(s_ctx, a);
     }
@@ -344,3 +341,4 @@ unsigned long copy_page_table(struct rd *master_rd, struct rd *slave_rd,
     granule_unlock(wi_m.g_llt);
     return 0;
 }
+*/

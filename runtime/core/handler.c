@@ -146,7 +146,7 @@ static const struct smc_handler smc_handlers[] = {
 	HANDLER(DATA_CREATE_UNKNOWN,	3, 0, smc_data_create_unknown,	 false, false),
 	HANDLER(DATA_DESTROY,		2, 2, smc_data_destroy,		 false, true),
 	HANDLER(CSDATA_CREATE,          5, 0, smc_csdata_create,         false, false),
-        HANDLER(CSDATA_DESTROY,         2, 2, smc_csdata_destroy,        false, true),
+    HANDLER(CSDATA_DESTROY,         2, 2, smc_csdata_destroy,        false, true),
 	HANDLER(RTT_CREATE,		4, 0, smc_rtt_create,		 true, true),
 	HANDLER(RTT_DESTROY,		3, 2, smc_rtt_destroy,		 false, true),
 	HANDLER(RTT_FOLD,		3, 1, smc_rtt_fold,		 false, false),

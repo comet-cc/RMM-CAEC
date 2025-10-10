@@ -239,7 +239,7 @@ enum s2_walk_status realm_ipa_get_ripas(struct rec *rec, unsigned long start,
 unsigned long map_ipa_to_pa(struct rd *rd,
                                  unsigned long pa_addr,
                                  unsigned long ipa_addr);
-unsigned long copy_page_table(struct rd *master_rd, struct rd *slave_rd,
-                                 unsigned long master_ipa,
-                                 unsigned long slave_ipa);
+//unsigned long copy_page_table(struct rd *master_rd, struct rd *slave_rd,
+  //                               unsigned long master_ipa,
+    //                             unsigned long slave_ipa);
 #endif /* REALM_H */
