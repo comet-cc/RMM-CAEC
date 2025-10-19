@@ -44,8 +44,11 @@ unsigned long smc_apt_create(unsigned long rd_addr,
     struct rd *rd;
     unsigned long ret;
 	struct granule *g_apt_params;
-	struct apt apt_params;
+	struct apt_kvm apt_params;
 	bool ns_access_ok;
+	
+	enum apt_region_kind kind;
+	size_t idx;
 
     g_apt_params = find_granule(apt_params_addr);
 	if ((g_apt_params == NULL) ||
@@ -92,81 +95,97 @@ unsigned long smc_apt_create(unsigned long rd_addr,
 	}
 	
 	apt->csdata_ipa_begin = apt_params.csdata_ipa_begin;
-        apt->csdata_ipa_end = apt_params.csdata_ipa_end;
+    apt->csdata_ipa_end = apt_params.csdata_ipa_end;
+	
+	unsigned long m_start, m_end;
+	//unsingned long m_size;
+	//checking master address ranges
+	for (int i = 0; i < MAX_MEM_REGIONS; i++) {
+		//KVM can only registers enabled regions
+		if (apt_params.master_memory[i].enable == false)
+			continue;
 
-	unsigned long m_start = apt_params.master_memory.ipa_start;
-	unsigned long m_size  = apt_params.master_memory.map_size;
-	unsigned long s_start = apt_params.slave_memory.ipa_start;
-	unsigned long s_size  = apt_params.slave_memory.map_size;
-
-	unsigned long m_end = 0, s_end = 0;
-	bool err = false;
-
-
-	if (apt_params.master_memory.enable && apt_params.slave_memory.enable) {
-
-    /* Compute ends with overflow protection */
-    	if (!ADD_OK_UL(m_start, m_size, &m_end)) {
-    	    /* ERROR: master range overflows */
-    	    err = true;
-    	}
-   		if (!ADD_OK_UL(s_start, s_size, &s_end)) {
-   	    	/* ERROR: slave range overflows */
-   	     	err = true;
-    	}
-
-    /* Containment within csdata [begin, end) */
- 	    if (!WITHIN(apt->csdata_ipa_begin, apt->csdata_ipa_end, m_start, m_end)) {
-        /* ERROR: master range outside csdata bounds */
-			err = true;
-    	}
-    	if (!WITHIN(apt->csdata_ipa_begin, apt->csdata_ipa_end, s_start, s_end)) {
-        	/* ERROR: slave range outside csdata bounds */
-			err = true;
-    	}
-
-	    /* No overlap between enabled regions (half-open intervals) */
-   		if (!DISJOINT(m_start, m_end, s_start, s_end)) {
-        	/* ERROR: master/slave regions overlap */
-			err = true;
-    	}
-	}
-
-	if (!(apt_params.master_memory.enable) && apt_params.slave_memory.enable) {
-
-    	if (!ADD_OK_UL(s_start, s_size, &s_end)) {
-        	/* ERROR: slave range overflows */
-			err = true;
-    	}
-	    if (!WITHIN(apt->csdata_ipa_begin, apt->csdata_ipa_end, s_start, s_end)) {
-    	    /* ERROR: slave range outside csdata bounds */
-			err = true;
-    	}
-	}
-
-	if (apt_params.master_memory.enable && !(apt_params.slave_memory.enable)) {
-
-    	if (!ADD_OK_UL(m_start, m_size, &m_end)) {
-        	/* ERROR: master range overflows */
-			err = true;
-    	}
-    	if (!WITHIN(apt->csdata_ipa_begin, apt->csdata_ipa_end, m_start, m_end)) {
-        	/* ERROR: master range outside csdata bounds */
-			err = true;
-    	}
-	}
-
-	if (err) {
+		if (apt_params.master_memory[i].map_size <= 0) {
 			ret = RMI_ERROR_REALM;
         	goto out_unmap;
+		}
+	
+		m_start = apt_params.master_memory[i].ipa_start;
+		//m_size  = apt_params.master_memory[i].map_size;
+		m_end = apt_params.master_memory[i].ipa_start + apt_params.master_memory[i].map_size;
+		
+		//check within csdata range
+		if(WITHIN(apt_params.csdata_ipa_begin, apt_params.csdata_ipa_end, m_start, m_end) == false)
+		{
+			INFO("Master address range is not within the csdata range %lx - %lx : %lx - %lx\n", 
+				apt_params.csdata_ipa_begin, apt_params.csdata_ipa_end, m_start, m_end);
+			ret = RMI_ERROR_REALM;
+        	goto out_unmap;
+		}
+		// add master region to the list of enabled master regions
+		apt_add_master(apt, apt_params.master_memory[i].slave_ID,
+					   apt_params.master_memory[i].slave_rd_pa,
+                       apt_params.master_memory[i].ipa_start,
+                       apt_params.master_memory[i].map_size,
+                       apt_params.master_memory[i].flags,
+                       apt_params.master_memory[i].enable);
+        INFO("Added master region %d : slave_ID = %x, slave_rd_pa = %lx, ipa_start = %lx, map_size = %lx \n",
+             i, apt_params.master_memory[i].slave_ID,
+             apt_params.master_memory[i].slave_rd_pa,
+             apt_params.master_memory[i].ipa_start,
+             apt_params.master_memory[i].map_size); 
 	}
 
-	apt->master_memory.ipa_start = apt_params.csdata_ipa_begin;
-	apt->master_memory.map_size = apt_params.csdata_ipa_end - apt_params.csdata_ipa_begin;
-	apt->slave_memory.ipa_start = apt_params.csdata_ipa_begin;
-	apt->slave_memory.map_size = apt_params.csdata_ipa_end - apt_params.csdata_ipa_begin;
-	apt->master_memory.enable = apt_params.master_memory.enable;
-	apt->slave_memory.enable = apt_params.slave_memory.enable;
+	//Checking slave address ranges
+	for (int i = 0; i < MAX_MEM_REGIONS; i++) {
+		//KVM can only registers enabled regions
+		if (apt_params.slave_memory[i].enable == false)
+			continue;
+
+		if (apt_params.slave_memory[i].map_size <= 0) {
+			ret = RMI_ERROR_REALM;
+        	goto out_unmap;
+		}
+
+	    m_start = apt_params.slave_memory[i].ipa_start;
+		//m_size  = apt_params.slave_memory[i].map_size;
+		m_end = apt_params.slave_memory[i].ipa_start + apt_params.slave_memory[i].map_size;
+
+		//check within csdata range
+		if(WITHIN(apt_params.csdata_ipa_begin, apt_params.csdata_ipa_end, m_start, m_end) == false)
+		{
+			INFO("Slave address range is not within the csdata range %lx - %lx : %lx - %lx\n", 
+				apt_params.csdata_ipa_begin, apt_params.csdata_ipa_end, m_start, m_end);
+			ret = RMI_ERROR_REALM;
+        	goto out_unmap;
+		}
+		
+		//check overlapping with enabled master regions
+        
+		if (apt_find_enabled_conflict(apt, m_start, apt_params.slave_memory[i].map_size, &kind, &idx)) {
+			INFO("Slave address range %lx - %lx conflicts with %s region %lx - %lx\n",
+				m_start, m_end,
+				(kind == APT_REGION_MASTER) ? "master" : "slave",
+				(kind == APT_REGION_MASTER) ? apt->master_memory[idx].ipa_start : apt->slave_memory[idx].ipa_start,
+				(kind == APT_REGION_MASTER) ? apt->master_memory[idx].ipa_start + apt->master_memory[idx].map_size : apt->slave_memory[idx].ipa_start + apt->slave_memory[idx].map_size);
+			ret = RMI_ERROR_REALM;
+			goto out_unmap;
+		}
+        
+		// add slave region to the list of enabled slave regions
+		apt_add_slave(apt, apt_params.slave_memory[i].master_ID,
+					   apt_params.slave_memory[i].master_rd_pa,
+                       apt_params.slave_memory[i].ipa_start,
+                       apt_params.slave_memory[i].map_size,
+                       apt_params.slave_memory[i].flags,
+                       apt_params.slave_memory[i].enable);
+        INFO("Added slave region %d : master_ID = %x, master_rd_pa = %lx, ipa_start = %lx, map_size = %lx \n",
+             i, apt_params.slave_memory[i].master_ID,
+             apt_params.slave_memory[i].master_rd_pa,
+             apt_params.slave_memory[i].ipa_start,
+             apt_params.slave_memory[i].map_size);  
+	}
+
 	ret = RMI_SUCCESS;
 
 out_unmap:
@@ -208,5 +227,200 @@ out_unmap:
 	buffer_unmap(rd);
 	granule_unlock(g_rd);
 	return ret;
+}
+
+
+
+
+static inline size_t first_free_from_mask(uint64_t used_mask) {
+    for (size_t i = 0; i < MAX_MEM_REGIONS; ++i)
+        if ((used_mask & BIT64(i)) == 0) return i;
+    return SIZE_MAX;
+}
+
+static inline void enable_push_master(struct apt *a, size_t idx) {
+    struct enabled_master_regions *em = &a->enabled_mr;
+    size_t pos = em->len;
+    em->index[pos] = idx;
+    em->pos_by_index[idx] = pos;
+    em->len++;
+    a->master_enabled_mask |= BIT64(idx);
+}
+
+static inline void enable_push_slave(struct apt *a, size_t idx) {
+    struct enabled_slave_regions *es = &a->enabled_sr;
+    size_t pos = es->len;
+    es->index[pos] = idx;
+    es->pos_by_index[idx] = pos;
+    es->len++;
+    a->slave_enabled_mask |= BIT64(idx);
+}
+
+static inline void disable_swap_pop_master(struct apt *a, size_t idx) {
+    struct enabled_master_regions *em = &a->enabled_mr;
+    size_t pos = em->pos_by_index[idx];
+    size_t last_pos = em->len - 1;
+
+    if (pos != last_pos) {
+        em->index[pos] = em->index[last_pos];
+        em->pos_by_index[ em->index[pos] ] = pos;
+    }
+    em->len--;
+    a->master_enabled_mask &= ~BIT64(idx);
+}
+
+static inline void disable_swap_pop_slave(struct apt *a, size_t idx) {
+    struct enabled_slave_regions *es = &a->enabled_sr;
+    size_t pos = es->pos_by_index[idx];
+    size_t last_pos = es->len - 1;
+
+    if (pos != last_pos) {
+        es->index[pos] = es->index[last_pos];
+        es->pos_by_index[ es->index[pos] ] = pos;
+    }
+    es->len--;
+    a->slave_enabled_mask &= ~BIT64(idx);
+}
+
+/* Safe half-open range overlap check (treat overflow as conflict) */
+static inline bool range_overlaps_ul(unsigned long a_start, unsigned long a_size,
+                                     unsigned long b_start, unsigned long b_size)
+{
+    if (a_size == 0 || b_size == 0) return false;
+
+    unsigned long a_end = a_start + a_size;
+    unsigned long b_end = b_start + b_size;
+
+    if (a_end < a_start || b_end < b_start) return true; /* overflow → conflict */
+
+    /* [a_start, a_end) vs [b_start, b_end) */
+    return !(a_end <= b_start || b_end <= a_start);
+}
+
+/* ---- Public API ---- */
+
+void apt_reset(struct apt *a) {
+    memset(a, 0, sizeof(*a));
+}
+
+size_t apt_add_master(struct apt *a,
+                      uint8_t slave_ID,
+                      unsigned long slave_rd_pa,
+                      unsigned long ipa_start,
+                      unsigned long map_size,
+                      uint8_t flags,
+                      bool enable_now)
+{
+    size_t idx = first_free_from_mask(a->master_used_mask);
+    if (idx == SIZE_MAX) return SIZE_MAX;
+
+    struct master_mem *m = &a->master_memory[idx];
+    m->slave_ID    = slave_ID;
+    m->slave_rd_pa = slave_rd_pa;
+    m->ipa_start   = ipa_start;
+    m->map_size    = map_size;
+    m->flags       = flags;
+
+    a->master_used_mask |= BIT64(idx);
+
+    if (enable_now && !(a->master_enabled_mask & BIT64(idx))) {
+        enable_push_master(a, idx);
+    }
+
+    INFO("apt_add_master: idx=%lu slave_ID=%u slave_rd_pa=0x%lx ipa_start=0x%lx map_size=0x%lx flags=%u enable_now=%d\n",
+         idx, slave_ID, slave_rd_pa, ipa_start, map_size, flags, enable_now);
+
+    return idx;
+}
+
+size_t apt_add_slave(struct apt *a,
+                     uint8_t master_ID,
+                     unsigned long master_rd_pa,
+                     unsigned long ipa_start,
+                     unsigned long map_size,
+                     uint8_t flags,
+                     bool enable_now)
+{
+    size_t idx = first_free_from_mask(a->slave_used_mask);
+    if (idx == SIZE_MAX) return SIZE_MAX;
+
+    struct slave_mem *s = &a->slave_memory[idx];
+    s->master_ID    = master_ID;
+    s->master_rd_pa = master_rd_pa;
+    s->ipa_start    = ipa_start;
+    s->map_size     = map_size;
+    s->flags        = flags;
+
+    a->slave_used_mask |= BIT64(idx);
+
+    if (enable_now && !(a->slave_enabled_mask & BIT64(idx))) {
+        enable_push_slave(a, idx);
+    }
+
+    INFO("apt_add_slave: idx=%lu master_ID=%u master_rd_pa=0x%lx ipa_start=0x%lx map_size=0x%lx flags=%u enable_now=%d\n",
+         idx, master_ID, master_rd_pa, ipa_start, map_size, flags, enable_now);
+
+    return idx;
+}
+
+bool apt_enable_master_idx(struct apt *a, size_t idx) {
+    if (!apt_idx_in_range(idx)) return false;
+    if (!(a->master_used_mask & BIT64(idx))) return false;
+    if (a->master_enabled_mask & BIT64(idx)) return true; /* already enabled */
+    enable_push_master(a, idx);
+    return true;
+}
+
+bool apt_disable_master_idx(struct apt *a, size_t idx) {
+    if (!apt_idx_in_range(idx)) return false;
+    if (!(a->master_enabled_mask & BIT64(idx))) return true; /* already disabled */
+    disable_swap_pop_master(a, idx);
+    return true;
+}
+
+bool apt_enable_slave_idx(struct apt *a, size_t idx) {
+    if (!apt_idx_in_range(idx)) return false;
+    if (!(a->slave_used_mask & BIT64(idx))) return false;
+    if (a->slave_enabled_mask & BIT64(idx)) return true; /* already enabled */
+    enable_push_slave(a, idx);
+    return true;
+}
+
+bool apt_disable_slave_idx(struct apt *a, size_t idx) {
+    if (!apt_idx_in_range(idx)) return false;
+    if (!(a->slave_enabled_mask & BIT64(idx))) return true; /* already disabled */
+    disable_swap_pop_slave(a, idx);
+    return true;
+}
+
+bool apt_find_enabled_conflict(const struct apt *a,
+                               unsigned long ipa_start,
+                               unsigned long map_size,
+                               enum apt_region_kind *kind_out,
+                               size_t *idx_out)
+{
+    /* Check enabled masters */
+    for (size_t pos = 0; pos < a->enabled_mr.len; ++pos) {
+        size_t idx = a->enabled_mr.index[pos];
+        const struct master_mem *m = &a->master_memory[idx];
+        if (range_overlaps_ul(ipa_start, map_size, m->ipa_start, m->map_size)) {
+            if (kind_out) *kind_out = APT_REGION_MASTER;
+            if (idx_out)  *idx_out  = idx;
+            return true;
+        }
+    }
+
+    /* Check enabled slaves */
+    for (size_t pos = 0; pos < a->enabled_sr.len; ++pos) {
+        size_t idx = a->enabled_sr.index[pos];
+        const struct slave_mem *s = &a->slave_memory[idx];
+        if (range_overlaps_ul(ipa_start, map_size, s->ipa_start, s->map_size)) {
+            if (kind_out) *kind_out = APT_REGION_SLAVE;
+            if (idx_out)  *idx_out  = idx;
+            return true;
+        }
+    }
+
+    return false; /* no conflicts */
 }
 
