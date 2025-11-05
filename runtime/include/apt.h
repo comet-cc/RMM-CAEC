@@ -19,6 +19,7 @@ struct granule;
 
 struct master_mem {
     uint8_t       slave_ID;
+    uint8_t       region_ID;
     unsigned long slave_rd_pa;
     unsigned long ipa_start;
     unsigned long map_size;
@@ -27,6 +28,7 @@ struct master_mem {
 
 struct slave_mem {
     uint8_t       master_ID;
+    uint8_t       region_ID;
     unsigned long master_rd_pa;
     unsigned long ipa_start;
     unsigned long map_size;
@@ -52,7 +54,7 @@ struct apt {
     unsigned long csdata_ipa_end;
 
     struct master_mem master_memory[MAX_MEM_REGIONS];
-    struct slave_mem  slave_memory [MAX_MEM_REGIONS];
+    struct slave_mem slave_memory[MAX_MEM_REGIONS];
 
     struct enabled_master_regions enabled_mr;
     struct enabled_slave_regions  enabled_sr;
@@ -119,10 +121,10 @@ size_t apt_add_slave(struct apt *a,
                      uint8_t flags,
                      bool enable_now);
 
-bool   apt_enable_master_idx(struct apt *a, size_t idx);
-bool   apt_disable_master_idx(struct apt *a, size_t idx);
-bool   apt_enable_slave_idx (struct apt *a, size_t idx);
-bool   apt_disable_slave_idx(struct apt *a, size_t idx);
+bool apt_enable_master_idx(struct apt *a, size_t idx);
+bool apt_disable_master_idx(struct apt *a, size_t idx);
+bool apt_enable_slave_idx(struct apt *a, size_t idx);
+bool apt_disable_slave_idx(struct apt *a, size_t idx);
 
 /* Conflict check vs currently enabled regions (masters + slaves) */
 bool   apt_find_enabled_conflict(const struct apt *a,

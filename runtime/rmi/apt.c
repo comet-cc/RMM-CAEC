@@ -47,8 +47,8 @@ unsigned long smc_apt_create(unsigned long rd_addr,
 	struct apt_kvm apt_params;
 	bool ns_access_ok;
 	
-	enum apt_region_kind kind;
-	size_t idx;
+	//enum apt_region_kind kind;
+	//size_t idx;
 
     g_apt_params = find_granule(apt_params_addr);
 	if ((g_apt_params == NULL) ||
@@ -89,19 +89,20 @@ unsigned long smc_apt_create(unsigned long rd_addr,
 	(void)realm_tag_assign(rd_addr, &ID);
 	INFO("realm tag assigned %x \n", ID);
  	
-	if (apt_params.csdata_ipa_begin > apt_params.csdata_ipa_end) {
-		ret = RMI_ERROR_REALM;
-        goto out_unmap;
-	}
+	//if (apt_params.csdata_ipa_begin > apt_params.csdata_ipa_end) {
+	//	ret = RMI_ERROR_REALM;
+     //   goto out_unmap;
+	//}
 	
 	apt->csdata_ipa_begin = apt_params.csdata_ipa_begin;
     apt->csdata_ipa_end = apt_params.csdata_ipa_end;
 	
-	unsigned long m_start, m_end;
+	//unsigned long m_start, m_end;
 	//unsingned long m_size;
 	//checking master address ranges
+   /*
 	for (int i = 0; i < MAX_MEM_REGIONS; i++) {
-		//KVM can only registers enabled regions
+		
 		if (apt_params.master_memory[i].enable == false)
 			continue;
 
@@ -111,10 +112,10 @@ unsigned long smc_apt_create(unsigned long rd_addr,
 		}
 	
 		m_start = apt_params.master_memory[i].ipa_start;
-		//m_size  = apt_params.master_memory[i].map_size;
+		
 		m_end = apt_params.master_memory[i].ipa_start + apt_params.master_memory[i].map_size;
 		
-		//check within csdata range
+		
 		if(WITHIN(apt_params.csdata_ipa_begin, apt_params.csdata_ipa_end, m_start, m_end) == false)
 		{
 			INFO("Master address range is not within the csdata range %lx - %lx : %lx - %lx\n", 
@@ -122,7 +123,7 @@ unsigned long smc_apt_create(unsigned long rd_addr,
 			ret = RMI_ERROR_REALM;
         	goto out_unmap;
 		}
-		// add master region to the list of enabled master regions
+		
 		apt_add_master(apt, apt_params.master_memory[i].slave_ID,
 					   apt_params.master_memory[i].slave_rd_pa,
                        apt_params.master_memory[i].ipa_start,
@@ -136,9 +137,9 @@ unsigned long smc_apt_create(unsigned long rd_addr,
              apt_params.master_memory[i].map_size); 
 	}
 
-	//Checking slave address ranges
+
 	for (int i = 0; i < MAX_MEM_REGIONS; i++) {
-		//KVM can only registers enabled regions
+		
 		if (apt_params.slave_memory[i].enable == false)
 			continue;
 
@@ -148,10 +149,10 @@ unsigned long smc_apt_create(unsigned long rd_addr,
 		}
 
 	    m_start = apt_params.slave_memory[i].ipa_start;
-		//m_size  = apt_params.slave_memory[i].map_size;
+		
 		m_end = apt_params.slave_memory[i].ipa_start + apt_params.slave_memory[i].map_size;
 
-		//check within csdata range
+	
 		if(WITHIN(apt_params.csdata_ipa_begin, apt_params.csdata_ipa_end, m_start, m_end) == false)
 		{
 			INFO("Slave address range is not within the csdata range %lx - %lx : %lx - %lx\n", 
@@ -160,8 +161,8 @@ unsigned long smc_apt_create(unsigned long rd_addr,
         	goto out_unmap;
 		}
 		
-		//check overlapping with enabled master regions
-        
+
+      
 		if (apt_find_enabled_conflict(apt, m_start, apt_params.slave_memory[i].map_size, &kind, &idx)) {
 			INFO("Slave address range %lx - %lx conflicts with %s region %lx - %lx\n",
 				m_start, m_end,
@@ -171,8 +172,7 @@ unsigned long smc_apt_create(unsigned long rd_addr,
 			ret = RMI_ERROR_REALM;
 			goto out_unmap;
 		}
-        
-		// add slave region to the list of enabled slave regions
+		
 		apt_add_slave(apt, apt_params.slave_memory[i].master_ID,
 					   apt_params.slave_memory[i].master_rd_pa,
                        apt_params.slave_memory[i].ipa_start,
@@ -185,7 +185,8 @@ unsigned long smc_apt_create(unsigned long rd_addr,
              apt_params.slave_memory[i].ipa_start,
              apt_params.slave_memory[i].map_size);  
 	}
-
+   
+*/
 	ret = RMI_SUCCESS;
 
 out_unmap:

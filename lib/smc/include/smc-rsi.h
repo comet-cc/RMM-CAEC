@@ -229,5 +229,7 @@ struct rsi_host_call {
  */
 #define SMC_RSI_HOST_CALL		SMC64_RSI_FID(U(0x9))
 
-#define SMC_RSI_SHARED_MEMORY_SET               SMC64_RSI_FID(U(0xa))
+#define SMC_RSI_CSM_CONFIG_SET      SMC64_RSI_FID(U(0xa))
+#define SMC_RSI_CSM_MAP     		SMC64_RSI_FID(U(0xb))
+#define SMC_RSI_CSM_UNMAP     		SMC64_RSI_FID(U(0xc))
 #endif /* SMC_RSI_H */

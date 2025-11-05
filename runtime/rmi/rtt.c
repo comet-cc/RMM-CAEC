@@ -1015,8 +1015,8 @@ unsigned long smc_data_create(unsigned long rd_addr,
 	struct granule *g_src;
 
 	if (check_valid_csrange(rd_addr, map_addr) != 0) {
-		INFO("Invalid range for data_create rd_addr = 0x%lx, map_addr = 0x%lx \n",
-			rd_addr, map_addr);
+		//INFO("Invalid range for data_create rd_addr = 0x%lx, map_addr = 0x%lx \n",
+			//rd_addr, map_addr);
 		//return RMI_ERROR_INPUT;
 	}
 
@@ -1039,8 +1039,8 @@ unsigned long smc_data_create_unknown(unsigned long rd_addr,
 {
 
 	if (check_valid_csrange(rd_addr, map_addr) != 0) {
-		INFO("Invalid range for data_create_unkonwn  rd_addr = 0x%lx, map_addr = 0x%lx \n",
-			rd_addr, map_addr);
+	//	INFO("Invalid range for data_create_unkonwn  rd_addr = 0x%lx, map_addr = 0x%lx \n",
+		//	rd_addr, map_addr);
 		//return RMI_ERROR_INPUT;
 	}
 	return data_create(rd_addr, data_addr, map_addr, NULL, 0);
@@ -1154,8 +1154,8 @@ unsigned long smc_csdata_create(unsigned long rd_addr,
                               unsigned long flags)
 {
 	if (check_valid_csrange(rd_addr, map_addr) != 1) {
-		INFO("Invalid range for cs_data_create rd_addr = 0x%lx, map_addr = 0x%lx \n",
-			rd_addr, map_addr);
+		//INFO("Invalid range for cs_data_create rd_addr = 0x%lx, map_addr = 0x%lx \n",
+		//	rd_addr, map_addr);
 		//return RMI_ERROR_INPUT;
 	}
 	return data_create(rd_addr, data_addr, map_addr, NULL, 0);
@@ -1253,12 +1253,12 @@ void smc_data_destroy(unsigned long rd_addr,
 	struct rd *rd;
 	struct s2tt_context s2_ctx;
 
-	if (check_valid_csrange(rd_addr, map_addr) != 0) {
-		INFO("Invalid CS range for data_destroy map_addr = 0x%lx\n", map_addr);
+//	if (check_valid_csrange(rd_addr, map_addr) != 0) {
+	//	INFO("Invalid CS range for data_destroy map_addr = 0x%lx\n", map_addr);
 	//	res->x[0] = RMI_ERROR_INPUT;
 	//	res->x[2] = 0UL;
 	//	return;
-	}
+	//}
 
 	g_rd = find_lock_granule(rd_addr, GRANULE_STATE_RD);
 	if (g_rd == NULL) {

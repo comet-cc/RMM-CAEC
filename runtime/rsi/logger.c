@@ -49,7 +49,9 @@ static const struct rsi_handler rsi_logger[] = {
 	RSI_FUNCTION(_IPA_STATE_SET, 4U, 2U),		/* 0xC4000197 */
 	RSI_FUNCTION(_IPA_STATE_GET, 2U, 2U),		/* 0xC4000198 */
 	RSI_FUNCTION(_HOST_CALL, 1U, 0U),		/* 0xC4000199 */
-        RSI_FUNCTION(_SHARED_MEMORY_SET, 4U, 2U)        /* 0xC400019a */
+    RSI_FUNCTION(_CSM_CONFIG_SET, 4U, 2U),        /* 0xC400019a */
+	RSI_FUNCTION(_CSM_MAP, 4U, 2U),        /* 0xC400019b */
+	RSI_FUNCTION(_CSM_UNMAP, 4U, 2U)        /* 0xC400019c */
 };
 
 #define RSI_STATUS_STRING(_id)[RSI_##_id] = #_id
@@ -76,7 +78,7 @@ static size_t print_entry(unsigned int id, unsigned long args[],
 	int cnt;
 
 	switch (id) {
-	case SMC_RSI_VERSION ... SMC_RSI_SHARED_MEMORY_SET: {
+	case SMC_RSI_VERSION ... SMC_RSI_CSM_UNMAP: {
 		const struct rsi_handler *logger = fid_to_rsi_logger(id);
 		num = logger->num_args;
 		cnt = snprintf(buf, MAX_NAME_LEN + 1UL,
