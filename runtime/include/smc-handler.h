@@ -24,16 +24,6 @@ unsigned long smc_data_create_unknown(unsigned long rd_addr,
 				      unsigned long data_addr,
 				      unsigned long map_addr);
 
-unsigned long smc_csdata_create(unsigned long rd_addr,
-                              unsigned long data_addr,
-                              unsigned long map_addr,
-                              unsigned long src_addr,
-                              unsigned long flags);
-
-void smc_csdata_destroy(unsigned long rd_addr,
-                      unsigned long map_addr,
-                      struct smc_result *res);
-
 void smc_data_destroy(unsigned long rd_addr,
 		      unsigned long map_addr,
 		      struct smc_result *res);
@@ -107,7 +97,7 @@ void smc_rtt_set_ripas(unsigned long rd_addr,
 			struct smc_result *res);
 
 unsigned long smc_apt_create(unsigned long rd_addr,
-			unsigned long rec_addr, unsigned long apt_param_addr);
+			unsigned long rec_addr);
 unsigned long smc_apt_destroy(unsigned long rd_addr, unsigned long apt_addr);
 unsigned long check_valid_csrange(unsigned long rd_addr,
 				      unsigned long map_addr);

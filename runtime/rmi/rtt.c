@@ -1125,10 +1125,10 @@ unsigned long check_valid_csrange(unsigned long rd_addr,
 	    goto unmap_apt;
     }
 	
-	if (map_addr < apt->csdata_ipa_begin || map_addr > apt->csdata_ipa_end) {
-    	ret = 0;
-    	goto unmap_apt;
-	}
+	//if (map_addr < apt->csdata_ipa_begin || map_addr > apt->csdata_ipa_end) {
+    //	ret = 0;
+    	//goto unmap_apt;
+//	}
 //	INFO("check_valid_csrange: the address is in the CSData region: map_addr = 0x%lx   0x%lx  0x%lx \n",
 //		 map_addr, apt->csdata_ipa_begin, apt->csdata_ipa_end);
 	//if (apt->slave_memory.enable == true && (map_addr < apt->slave_memory.ipa_start || map_addr > (apt->slave_memory.ipa_start+ apt->slave_memory.map_size))) {
@@ -1145,22 +1145,7 @@ unmap_rd:
 	buffer_unmap(rd);
 	granule_unlock(g_rd);
 	return ret;
-}
-
-unsigned long smc_csdata_create(unsigned long rd_addr,
-                              unsigned long data_addr,
-                              unsigned long map_addr,
-                              unsigned long src_addr,
-                              unsigned long flags)
-{
-	if (check_valid_csrange(rd_addr, map_addr) != 1) {
-		//INFO("Invalid range for cs_data_create rd_addr = 0x%lx, map_addr = 0x%lx \n",
-		//	rd_addr, map_addr);
-		//return RMI_ERROR_INPUT;
-	}
-	return data_create(rd_addr, data_addr, map_addr, NULL, 0);
-}
-							  
+}						  
 
 /*
 {
@@ -1336,105 +1321,6 @@ out_unmap_ll_table:
 	buffer_unmap(s2tt);
 	granule_unlock(wi.g_llt);
 }
-void smc_csdata_destroy(unsigned long rd_addr,
-                      unsigned long map_addr,
-                      struct smc_result *res)
-{
-	struct granule *g_data;
-	struct granule *g_rd, *g_apt;
-	struct s2tt_walk wi;
-	unsigned long data_addr, s2tte, *s2tt;
-	struct rd *rd;
-	struct s2tt_context s2_ctx;
-	uint8_t tag;
-	struct apt *apt;
-
-	if (check_valid_csrange(rd_addr, map_addr) != 1) {
-		INFO("Invalid range for csdata_destroy rd_addr = 0x%lx, map_addr = 0x%lx\n",
-			rd_addr, map_addr);
-	//	return;
-	}
-
-	g_rd = find_lock_granule(rd_addr, GRANULE_STATE_RD);
-	if (g_rd == NULL) {
-		res->x[0] = RMI_ERROR_INPUT;
-		res->x[2] = 0UL;
-		return;
-	}
-
-	rd = buffer_granule_map(g_rd, SLOT_RD);
-	assert(rd != NULL);
-
-	if (!addr_in_par(rd, map_addr) ||
-	    !validate_map_addr(map_addr, S2TT_PAGE_LEVEL, rd)) {
-		buffer_unmap(rd);
-		granule_unlock(g_rd);
-		res->x[0] = RMI_ERROR_INPUT;
-		res->x[2] = 0UL;
-		return;
-	}
-
-
-	s2_ctx = rd->s2_ctx;
-	
-	g_apt = find_lock_granule(rd->apt_pa, GRANULE_STATE_APT);
-	if (g_apt == NULL) {
-		res->x[0] = RMI_ERROR_INPUT;
-		res->x[2] = 0UL;
-		return;
-	}
-	apt = buffer_granule_map(g_apt, SLOT_APT);
-	assert(apt != NULL);
-
-	buffer_unmap(rd);
-
-	granule_lock(s2_ctx.g_rtt, GRANULE_STATE_RTT);
-	granule_unlock(g_rd);
-
-	s2tt_walk_lock_unlock(&s2_ctx, map_addr, S2TT_PAGE_LEVEL, &wi);
-	s2tt = buffer_granule_map(wi.g_llt, SLOT_RTT);
-	assert(s2tt != NULL);
-
-	if (wi.last_level != S2TT_PAGE_LEVEL) {
-		res->x[0] = pack_return_code(RMI_ERROR_RTT,
-						(unsigned char)wi.last_level);
-		goto out_unmap_ll_table;
-	}
-
-	s2tte = s2tte_read(&s2tt[wi.index]);
-	data_addr = s2tte_pa(&s2_ctx, s2tte, S2TT_PAGE_LEVEL);
-	if (realm_tag_get_by_rd(rd_addr, &tag) == true){
-		/*
-		 * Check if the granule is owned by the realm.
-		 * If not, return RMI_ERROR_INPUT.
-		 */
-	} else {
-		res->x[0] = RMI_ERROR_INPUT;
-			goto out_unmap_ll_table;
-	} 
-
-
-	if (s2tte_is_assigned_ram(&s2_ctx, s2tte, S2TT_PAGE_LEVEL)) {
-		data_addr = s2tte_pa(&s2_ctx, s2tte, S2TT_PAGE_LEVEL);
-		s2tte = s2tte_create_unassigned_destroyed(&s2_ctx);
-		s2tte_write(&s2tt[wi.index], s2tte);
-		s2tt_invalidate_page(&s2_ctx, map_addr);
-	} else if (s2tte_is_assigned_empty(&s2_ctx, s2tte, S2TT_PAGE_LEVEL)) {
-		data_addr = s2tte_pa(&s2_ctx, s2tte, S2TT_PAGE_LEVEL);
-		s2tte = s2tte_create_unassigned_empty(&s2_ctx);
-		s2tte_write(&s2tt[wi.index], s2tte);
-	} else if (s2tte_is_assigned_destroyed(&s2_ctx, s2tte,
-					       S2TT_PAGE_LEVEL)) {
-		data_addr = s2tte_pa(&s2_ctx, s2tte, S2TT_PAGE_LEVEL);
-		s2tte = s2tte_create_unassigned_destroyed(&s2_ctx);
-		s2tte_write(&s2tt[wi.index], s2tte);
-	} else {
-		res->x[0] = pack_return_code(RMI_ERROR_RTT,
-						(unsigned char)S2TT_PAGE_LEVEL);
-		goto out_unmap_ll_table;
-	}
-
-	atomic_granule_put(wi.g_llt);
 
 	
 		//if (apt->master_memory.enable == true && apt->master_memory.ipa_start <= map_addr && 
@@ -1486,19 +1372,7 @@ void smc_csdata_destroy(unsigned long rd_addr,
 	 * granule by table walk. This lock needs to be acquired before a state
 	 * transition to or from GRANULE_STATE_DATA for granule address can happen.
 	 */
-	g_data = find_lock_granule(data_addr, GRANULE_STATE_DATA);
-	assert(g_data != NULL);
-	buffer_granule_memzero(g_data, SLOT_DELEGATED);
-	granule_unlock_transition(g_data, GRANULE_STATE_DELEGATED);
 
-	res->x[0] = RMI_SUCCESS;
-	res->x[1] = data_addr;
-
-out_unmap_ll_table:
-	res->x[2] = s2tt_skip_non_live_entries(&s2_ctx, map_addr, s2tt, &wi);
-	buffer_unmap(s2tt);
-	granule_unlock(wi.g_llt);
-}
 /*
  * Update the ripas value for the entry pointed by @s2ttep.
  *
@@ -1510,6 +1384,8 @@ out_unmap_ll_table:
  * Sets:
  * @(*do_tlbi) to 'true' if the TLBs have to be invalidated.
  */
+
+
 static int update_ripas(const struct s2tt_context *s2_ctx,
 			unsigned long *s2ttep, long level,
 			enum ripas ripas_val,

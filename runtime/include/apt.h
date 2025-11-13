@@ -50,8 +50,6 @@ struct enabled_slave_regions {
 
 /* Main APT */
 struct apt {
-    unsigned long csdata_ipa_begin;
-    unsigned long csdata_ipa_end;
 
     struct master_mem master_memory[MAX_MEM_REGIONS];
     struct slave_mem slave_memory[MAX_MEM_REGIONS];
@@ -68,32 +66,6 @@ struct apt {
 
 COMPILER_ASSERT(sizeof(struct apt) <= GRANULE_SIZE);
 COMPILER_ASSERT(MAX_MEM_REGIONS <= 63);
-
-/* KVM-side APT (no enabled sets) */
-struct master_mem_kvm {
-    uint8_t       slave_ID;
-    unsigned long slave_rd_pa;
-    unsigned long ipa_start;
-    unsigned long map_size;
-    uint8_t       flags;
-    bool          enable;
-};
-
-struct slave_mem_kvm {
-    uint8_t       master_ID;
-    unsigned long master_rd_pa;
-    unsigned long ipa_start;
-    unsigned long map_size;
-    uint8_t       flags;
-    bool          enable;
-};
-
-struct apt_kvm {
-    unsigned long csdata_ipa_begin;
-    unsigned long csdata_ipa_end;
-    struct master_mem_kvm master_memory[MAX_MEM_REGIONS];
-    struct slave_mem_kvm  slave_memory [MAX_MEM_REGIONS];
-};
 
 /* -------- Public enums / prototypes -------- */
 
@@ -127,12 +99,14 @@ bool apt_enable_slave_idx(struct apt *a, size_t idx);
 bool apt_disable_slave_idx(struct apt *a, size_t idx);
 
 /* Conflict check vs currently enabled regions (masters + slaves) */
-bool   apt_find_enabled_conflict(const struct apt *a,
-                                 unsigned long ipa_start,
-                                 unsigned long map_size,
-                                 enum apt_region_kind *kind_out,
-                                 size_t *idx_out /* index in master/slave arrays */);
+bool apt_find_enabled_conflict(const struct apt *a,
+                                  unsigned long ipa_start,
+                                  unsigned long map_size,
+                                  enum apt_region_kind *kind_out,
+                                  size_t *idx_out,
+                                  bool skip_master_check);
 
+                                
 /* -------- Small inline helpers (header-only) -------- */
 
 static inline bool apt_idx_in_range(size_t idx) { return idx < MAX_MEM_REGIONS; }

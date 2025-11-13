@@ -46,6 +46,7 @@ void handle_rsi_shared_memory_set_master(struct rec *rec,
 	unsigned long apt_pa;
 	struct granule *g_apt;
     struct apt *apt;
+	int region_index = 0;
 
 	if (size_ipa == 0 || !GRANULE_ALIGNED(base_ipa) || !GRANULE_ALIGNED(size_ipa)) {
             res->smc_res.x[0] = RSI_ERROR_INPUT;
@@ -68,27 +69,34 @@ void handle_rsi_shared_memory_set_master(struct rec *rec,
     apt = buffer_granule_map(g_apt, SLOT_APT);
     assert(apt != NULL);
 
-	int region_index = 0;
-    
-	INFO("Setting slave region with base ipa = 0x%lx size = 0x%lx \n", base_ipa, size_ipa);
-	apt->master_memory[region_index].slave_rd_pa = slave_rd_pa;
-	apt->master_memory[region_index].region_ID = 0; //dummy for now
-	apt->master_memory[region_index].flags = 0; //dummy for now
-	apt->master_memory[region_index].slave_ID = slave_id;
-	apt->master_memory[region_index].ipa_start = base_ipa;
-	apt->master_memory[region_index].map_size = size_ipa;
+
+	
+
+	// - Make sure the specified region does not overlap with other master and slave regions
+	enum apt_region_kind kind;
+	size_t idx;
+	bool conflict = apt_find_enabled_conflict(apt, base_ipa, size_ipa, &kind, &idx, true);
+	if (conflict) {
+		INFO("Address range %lx - %lx conflicts with %s region %lx - %lx\n",
+			 base_ipa, size_ipa,
+			 (kind == APT_REGION_MASTER) ? "master" : "slave",
+			 (kind == APT_REGION_MASTER) ? apt->master_memory[idx].ipa_start : apt->slave_memory[idx].ipa_start,
+			 (kind == APT_REGION_MASTER) ? apt->master_memory[idx].ipa_start + apt->master_memory[idx].map_size : apt->slave_memory[idx].ipa_start + apt->slave_memory[idx].map_size);
+		res->smc_res.x[0] = RSI_ERROR_INPUT;
+		goto unmap;
+	}
+
+	region_index = apt_add_master(apt, slave_id, slave_rd_pa, base_ipa, size_ipa, 0, true);
+	INFO("Setting slave region with base ipa = 0x%lx size = 0x%lx region_index = %d\n", base_ipa, size_ipa, region_index);
 
 	rec_exit->exit_reason = RMI_EXIT_CSM_ADD_GRANULES;
 	rec_exit->ripas_base = base_ipa;
 	rec_exit->ripas_top = base_ipa + size_ipa;
  	res->action = UPDATE_REC_EXIT_TO_HOST;
-//	res->action = UPDATE_REC_RETURN_TO_REALM;
     res->smc_res.x[0] = RSI_SUCCESS;
 	res->smc_res.x[1] = slave_rd_pa;
-	res->smc_res.x[2] = base_ipa;
- 	res->smc_res.x[3] = base_ipa + size_ipa;
-
-//unmap:
+	res->smc_res.x[2] = region_index;
+unmap:
     buffer_unmap(apt);
     granule_unlock(g_apt);
 	buffer_unmap(rd);
@@ -173,24 +181,31 @@ void handle_rsi_shared_memory_set_slave(struct rec *rec,
             INFO("Mismatching with IPA master_ipa_size =0x%lx and slave_ipa_size=0x%lx \n",apt_master->master_memory[0].map_size, size_ipa);
             goto unmap;			
     }
-	slave_region_index = 0; // we assume only one region for now
-    apt_slave->slave_memory[slave_region_index].master_rd_pa = master_rd_pa;
-	apt_slave->slave_memory[slave_region_index].ipa_start = base_ipa;
-	apt_slave->slave_memory[slave_region_index].map_size = size_ipa;
-	apt_slave->slave_memory[slave_region_index].master_ID = master_id;
-	apt_slave->slave_memory[slave_region_index].flags = 0; //dummy for now
-	apt_slave->slave_memory[slave_region_index].region_ID = 0; //dummy for now
+	// 3- Make sure the specified region does not overlap with other master and slave regions
+	enum apt_region_kind kind;
+	size_t idx;
+	bool conflict = apt_find_enabled_conflict(apt_slave, base_ipa, size_ipa, &kind, &idx, false);
+	if (conflict) {
+		INFO("Address range %lx - %lx conflicts with %s region %lx - %lx\n",
+			 base_ipa, size_ipa,
+			 (kind == APT_REGION_MASTER) ? "master" : "slave",
+			 (kind == APT_REGION_MASTER) ? apt_slave->master_memory[idx].ipa_start : apt_slave->slave_memory[idx].ipa_start,
+			 (kind == APT_REGION_MASTER) ? apt_slave->master_memory[idx].ipa_start + apt_slave->master_memory[idx].map_size : apt_slave->slave_memory[idx].ipa_start + apt_slave->slave_memory[idx].map_size);
+		res->smc_res.x[0] = RSI_ERROR_INPUT;
+		goto unmap;
+	}
+		
+	// 4- Setting the slave region in the slave realm APT
+	slave_region_index = apt_add_slave(apt_slave, master_id, master_rd_pa, base_ipa, size_ipa, 0, true);
+	INFO("Setting slave region with base ipa = 0x%lx size = 0x%lx region_index = %d\n", base_ipa, size_ipa, slave_region_index);
 
-	INFO(" Setting slave region with base ipa = 0x%lx size = 0x%lx \n", base_ipa, size_ipa);
-	
 	rec_exit->exit_reason = RMI_EXIT_CSM_REMOVE_GRANULES;
 	rec_exit->ripas_base = base_ipa;
 	rec_exit->ripas_top = base_ipa + size_ipa;
  	res->action = UPDATE_REC_EXIT_TO_HOST;
     res->smc_res.x[0] = RSI_SUCCESS;
     res->smc_res.x[1] = master_rd_pa;
-    res->smc_res.x[2] = base_ipa;
- 	res->smc_res.x[3] = base_ipa + size_ipa;
+    res->smc_res.x[2] = slave_region_index;	
 unmap:
 	buffer_unmap(apt_slave);
 	granule_unlock(g_apt_slave);

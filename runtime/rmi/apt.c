@@ -36,32 +36,13 @@
 
 
 unsigned long smc_apt_create(unsigned long rd_addr,
-			     unsigned long apt_addr, unsigned long apt_params_addr)
+			     unsigned long apt_addr)
 {
 	struct granule *g_rd;
     struct granule *g_apt;
     struct apt *apt;
     struct rd *rd;
     unsigned long ret;
-	struct granule *g_apt_params;
-	struct apt_kvm apt_params;
-	bool ns_access_ok;
-	
-	//enum apt_region_kind kind;
-	//size_t idx;
-
-    g_apt_params = find_granule(apt_params_addr);
-	if ((g_apt_params == NULL) ||
-		(granule_unlocked_state(g_apt_params) != GRANULE_STATE_NS)) {
-		return RMI_ERROR_INPUT;
-	}
-
-	ns_access_ok = ns_buffer_read(SLOT_NS, g_apt_params, 0U,
-				      sizeof(apt_params), &apt_params);
-
-	if (!ns_access_ok) {
-		return RMI_ERROR_INPUT;
-	}
 
     if (!find_lock_two_granules(apt_addr,
                                 GRANULE_STATE_DELEGATED, &g_apt,
@@ -70,11 +51,15 @@ unsigned long smc_apt_create(unsigned long rd_addr,
                 return RMI_ERROR_REALM;
                 goto out_free_aux;
 	}
- 	apt = buffer_granule_map(g_apt, SLOT_APT);
-    assert(apt != NULL);
 
     rd = buffer_granule_map(g_rd, SLOT_RD);
     assert(rd != NULL);
+
+ 	apt = buffer_granule_map(g_apt, SLOT_APT);
+    assert(apt != NULL);
+    
+    apt_reset(apt);
+
 
 	// This function cannot be called at runtime
 	if (get_rd_state_locked(rd) != REALM_NEW) {
@@ -84,109 +69,10 @@ unsigned long smc_apt_create(unsigned long rd_addr,
 	// later we initialize this value in the initial content of RD created by the hypervisor
 	rd->apt_pa = apt_addr;
 	// Create Unique Tag fo the realm. FOr now the available IDs are hardcoded
-	INFO("apt_params.csdata_ipa_begin: %lx apt_params.csdata_ipa_begin %lx \n", apt_params.csdata_ipa_begin, apt_params.csdata_ipa_end);
 	uint8_t ID;
 	(void)realm_tag_assign(rd_addr, &ID);
 	INFO("realm tag assigned %x \n", ID);
- 	
-	//if (apt_params.csdata_ipa_begin > apt_params.csdata_ipa_end) {
-	//	ret = RMI_ERROR_REALM;
-     //   goto out_unmap;
-	//}
-	
-	apt->csdata_ipa_begin = apt_params.csdata_ipa_begin;
-    apt->csdata_ipa_end = apt_params.csdata_ipa_end;
-	
-	//unsigned long m_start, m_end;
-	//unsingned long m_size;
-	//checking master address ranges
-   /*
-	for (int i = 0; i < MAX_MEM_REGIONS; i++) {
-		
-		if (apt_params.master_memory[i].enable == false)
-			continue;
 
-		if (apt_params.master_memory[i].map_size <= 0) {
-			ret = RMI_ERROR_REALM;
-        	goto out_unmap;
-		}
-	
-		m_start = apt_params.master_memory[i].ipa_start;
-		
-		m_end = apt_params.master_memory[i].ipa_start + apt_params.master_memory[i].map_size;
-		
-		
-		if(WITHIN(apt_params.csdata_ipa_begin, apt_params.csdata_ipa_end, m_start, m_end) == false)
-		{
-			INFO("Master address range is not within the csdata range %lx - %lx : %lx - %lx\n", 
-				apt_params.csdata_ipa_begin, apt_params.csdata_ipa_end, m_start, m_end);
-			ret = RMI_ERROR_REALM;
-        	goto out_unmap;
-		}
-		
-		apt_add_master(apt, apt_params.master_memory[i].slave_ID,
-					   apt_params.master_memory[i].slave_rd_pa,
-                       apt_params.master_memory[i].ipa_start,
-                       apt_params.master_memory[i].map_size,
-                       apt_params.master_memory[i].flags,
-                       apt_params.master_memory[i].enable);
-        INFO("Added master region %d : slave_ID = %x, slave_rd_pa = %lx, ipa_start = %lx, map_size = %lx \n",
-             i, apt_params.master_memory[i].slave_ID,
-             apt_params.master_memory[i].slave_rd_pa,
-             apt_params.master_memory[i].ipa_start,
-             apt_params.master_memory[i].map_size); 
-	}
-
-
-	for (int i = 0; i < MAX_MEM_REGIONS; i++) {
-		
-		if (apt_params.slave_memory[i].enable == false)
-			continue;
-
-		if (apt_params.slave_memory[i].map_size <= 0) {
-			ret = RMI_ERROR_REALM;
-        	goto out_unmap;
-		}
-
-	    m_start = apt_params.slave_memory[i].ipa_start;
-		
-		m_end = apt_params.slave_memory[i].ipa_start + apt_params.slave_memory[i].map_size;
-
-	
-		if(WITHIN(apt_params.csdata_ipa_begin, apt_params.csdata_ipa_end, m_start, m_end) == false)
-		{
-			INFO("Slave address range is not within the csdata range %lx - %lx : %lx - %lx\n", 
-				apt_params.csdata_ipa_begin, apt_params.csdata_ipa_end, m_start, m_end);
-			ret = RMI_ERROR_REALM;
-        	goto out_unmap;
-		}
-		
-
-      
-		if (apt_find_enabled_conflict(apt, m_start, apt_params.slave_memory[i].map_size, &kind, &idx)) {
-			INFO("Slave address range %lx - %lx conflicts with %s region %lx - %lx\n",
-				m_start, m_end,
-				(kind == APT_REGION_MASTER) ? "master" : "slave",
-				(kind == APT_REGION_MASTER) ? apt->master_memory[idx].ipa_start : apt->slave_memory[idx].ipa_start,
-				(kind == APT_REGION_MASTER) ? apt->master_memory[idx].ipa_start + apt->master_memory[idx].map_size : apt->slave_memory[idx].ipa_start + apt->slave_memory[idx].map_size);
-			ret = RMI_ERROR_REALM;
-			goto out_unmap;
-		}
-		
-		apt_add_slave(apt, apt_params.slave_memory[i].master_ID,
-					   apt_params.slave_memory[i].master_rd_pa,
-                       apt_params.slave_memory[i].ipa_start,
-                       apt_params.slave_memory[i].map_size,
-                       apt_params.slave_memory[i].flags,
-                       apt_params.slave_memory[i].enable);
-        INFO("Added slave region %d : master_ID = %x, master_rd_pa = %lx, ipa_start = %lx, map_size = %lx \n",
-             i, apt_params.slave_memory[i].master_ID,
-             apt_params.slave_memory[i].master_rd_pa,
-             apt_params.slave_memory[i].ipa_start,
-             apt_params.slave_memory[i].map_size);  
-	}
-   
-*/
 	ret = RMI_SUCCESS;
 
 out_unmap:
@@ -313,7 +199,8 @@ size_t apt_add_master(struct apt *a,
                       bool enable_now)
 {
     size_t idx = first_free_from_mask(a->master_used_mask);
-    if (idx == SIZE_MAX) return SIZE_MAX;
+    if (idx == SIZE_MAX) 
+        return SIZE_MAX;
 
     struct master_mem *m = &a->master_memory[idx];
     m->slave_ID    = slave_ID;
@@ -395,23 +282,25 @@ bool apt_disable_slave_idx(struct apt *a, size_t idx) {
 }
 
 bool apt_find_enabled_conflict(const struct apt *a,
-                               unsigned long ipa_start,
-                               unsigned long map_size,
-                               enum apt_region_kind *kind_out,
-                               size_t *idx_out)
+                                  unsigned long ipa_start,
+                                  unsigned long map_size,
+                                  enum apt_region_kind *kind_out,
+                                  size_t *idx_out,
+                                  bool skip_master_check)
 {
-    /* Check enabled masters */
-    for (size_t pos = 0; pos < a->enabled_mr.len; ++pos) {
-        size_t idx = a->enabled_mr.index[pos];
-        const struct master_mem *m = &a->master_memory[idx];
-        if (range_overlaps_ul(ipa_start, map_size, m->ipa_start, m->map_size)) {
-            if (kind_out) *kind_out = APT_REGION_MASTER;
-            if (idx_out)  *idx_out  = idx;
-            return true;
+    /* Optionally check enabled masters */
+    if (!skip_master_check) {
+        for (size_t pos = 0; pos < a->enabled_mr.len; ++pos) {
+            size_t idx = a->enabled_mr.index[pos];
+            const struct master_mem *m = &a->master_memory[idx];
+            if (range_overlaps_ul(ipa_start, map_size, m->ipa_start, m->map_size)) {
+                if (kind_out) *kind_out = APT_REGION_MASTER;
+                if (idx_out)  *idx_out  = idx;
+                return true;
+            }
         }
     }
-
-    /* Check enabled slaves */
+    /* Always check enabled slaves */
     for (size_t pos = 0; pos < a->enabled_sr.len; ++pos) {
         size_t idx = a->enabled_sr.index[pos];
         const struct slave_mem *s = &a->slave_memory[idx];
@@ -424,4 +313,5 @@ bool apt_find_enabled_conflict(const struct apt *a,
 
     return false; /* no conflicts */
 }
+
 
