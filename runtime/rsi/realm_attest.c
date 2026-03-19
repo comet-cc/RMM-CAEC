@@ -9,6 +9,7 @@
 #include <granule.h>
 #include <measurement.h>
 #include <realm.h>
+#include <realm_tag.h>
 #include <rsi-handler.h>
 #include <smc-rsi.h>
 #include <smc.h>
@@ -175,6 +176,9 @@ void handle_rsi_attest_token_init(struct rec *rec, struct rsi_result *res)
 	assert(rd != NULL);
 
 	get_rpv(rd, &rpv_ptr, &rpv_len);
+	uint8_t realm_tag = 0;
+	(void)realm_tag_get_by_rd(granule_addr(rec->realm_info.g_rd), &realm_tag);
+
 	att_ret = attest_realm_token_create(rd->algorithm, rd->measurement,
 					    MEASUREMENT_SLOT_NR,
 					    rpv_ptr,
@@ -183,7 +187,7 @@ void handle_rsi_attest_token_init(struct rec *rec, struct rsi_result *res)
 					    ATTEST_CHALLENGE_SIZE,
 					    &attest_data->token_sign_ctx,
 					    attest_data->rmm_realm_token_buf,
-					    sizeof(attest_data->rmm_realm_token_buf));
+					    sizeof(attest_data->rmm_realm_token_buf), realm_tag);
 	buffer_unmap(rd);
 	granule_unlock(rec->realm_info.g_rd);
 

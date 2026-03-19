@@ -203,7 +203,7 @@ int attest_realm_token_create(enum hash_algo algorithm,
 			     size_t challenge_len,
 			     struct token_sign_cntxt *ctx,
 			     void *realm_token_buf,
-			     size_t realm_token_buf_size);
+			     size_t realm_token_buf_size, uint8_t realm_tag);
 
 /*
  * Initialize the token sign context and also the heap buffer used for the crypto.

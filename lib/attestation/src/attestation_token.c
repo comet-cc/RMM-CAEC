@@ -267,7 +267,7 @@ int attest_realm_token_create(enum hash_algo algorithm,
 			     size_t challenge_len,
 			     struct token_sign_cntxt *ctx,
 			     void *realm_token_buf,
-			     size_t realm_token_buf_size)
+			     size_t realm_token_buf_size, uint8_t realm_tag)
 {
 	struct q_useful_buf_c buf;
 	size_t measurement_size;
@@ -333,6 +333,16 @@ int attest_realm_token_create(enum hash_algo algorithm,
 	QCBOREncode_AddTextToMapN(&(ctx->ctx.cbor_enc_ctx),
 				  CCA_REALM_PROFILE,
 				  UsefulBuf_FromSZ(CCA_REALM_PROFILE_STR));
+
+	/*
+	 * CAEC customization: add the Realm tag as a non-standard private
+	 * claim when one has been assigned for this Realm.
+	 */
+	if (realm_tag != 0U) {
+		QCBOREncode_AddUInt64ToMapN(&(ctx->ctx.cbor_enc_ctx),
+					    CCA_REALM_TAG,
+					    realm_tag);
+	}
 
 	measurement_size = measurement_get_size(algorithm);
 	assert(measurement_size <= MAX_MEASUREMENT_SIZE);
