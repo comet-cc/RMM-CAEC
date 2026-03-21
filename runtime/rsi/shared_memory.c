@@ -11,111 +11,16 @@
 #include <status.h>
 #include <granule.h>
 #include <apt.h>
+#include <csm_id.h>
 #include <debug.h>
 #include <buffer.h>
 #include <realm_tag.h>
-#include <spinlock.h>
 
 #define OWNER_TAG_MASK_U64  0xFFull
 #define OWNER_TAG_DECODE(x) ((uint8_t)((x) & OWNER_TAG_MASK_U64))
 #define SLAVE_FLAG              1UL
 #define READ_ONLY                   2UL
 #define ALIGN_4KB (4UL * 1024)
-#define CONFIG_MAX_CSM_REGION_IDS 64
-
-struct csm_region_id_entry {
-	uint64_t owner_rd_pa;
-	uint8_t region_id;
-	bool in_use;
-};
-
-static struct csm_region_id_entry g_csm_region_ids[CONFIG_MAX_CSM_REGION_IDS];
-static spinlock_t g_csm_region_id_lock;
-static uint8_t g_csm_region_id_counter = 1U;
-
-static int csm_region_id_find_free_slot(void)
-{
-	for (int i = 0; i < CONFIG_MAX_CSM_REGION_IDS; ++i) {
-		if (!g_csm_region_ids[i].in_use) {
-			return i;
-		}
-	}
-
-	return -1;
-}
-
-static bool csm_region_id_collides(uint8_t region_id)
-{
-	for (int i = 0; i < CONFIG_MAX_CSM_REGION_IDS; ++i) {
-		if (g_csm_region_ids[i].in_use &&
-		    g_csm_region_ids[i].region_id == region_id) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
-static bool csm_region_id_assign(uint64_t owner_rd_pa, uint8_t *out_region_id)
-{
-	bool ok = false;
-	uint8_t candidate;
-	int slot;
-	int tries = 0;
-
-	spinlock_acquire(&g_csm_region_id_lock);
-
-	slot = csm_region_id_find_free_slot();
-	if (slot < 0) {
-		goto out_unlock;
-	}
-
-	do {
-		candidate = g_csm_region_id_counter++;
-		if (candidate == 0U) {
-			candidate = g_csm_region_id_counter++;
-		}
-		tries++;
-		if (tries > CONFIG_MAX_CSM_REGION_IDS) {
-			goto out_unlock;
-		}
-	} while (csm_region_id_collides(candidate));
-
-	g_csm_region_ids[slot].owner_rd_pa = owner_rd_pa;
-	g_csm_region_ids[slot].region_id = candidate;
-	g_csm_region_ids[slot].in_use = true;
-
-	if (out_region_id != NULL) {
-		*out_region_id = candidate;
-	}
-	ok = true;
-
-out_unlock:
-	spinlock_release(&g_csm_region_id_lock);
-	return ok;
-}
-
-static bool csm_region_id_remove(uint8_t region_id)
-{
-	bool ok = false;
-
-	spinlock_acquire(&g_csm_region_id_lock);
-
-	for (int i = 0; i < CONFIG_MAX_CSM_REGION_IDS; ++i) {
-		if (g_csm_region_ids[i].in_use &&
-		    g_csm_region_ids[i].region_id == region_id) {
-			g_csm_region_ids[i].owner_rd_pa = 0UL;
-			g_csm_region_ids[i].region_id = 0U;
-			g_csm_region_ids[i].in_use = false;
-			ok = true;
-			break;
-		}
-	}
-
-	spinlock_release(&g_csm_region_id_lock);
-	return ok;
-}
-
 void handle_rsi_csm_create(struct rec *rec,
 			   struct rmi_rec_exit *rec_exit,
 			   struct rsi_result *res)
@@ -216,12 +121,6 @@ void handle_rsi_csm_share(struct rec *rec,
 	if (!realm_tag_rd_by_tag(slave_id, &slave_rd_pa)) {
 		res->smc_res.x[0] = RSI_ERROR_INPUT;
 		INFO("Invalid slave rd tag for share \n");
-		return;
-	}
-
-	if (!realm_tag_get_by_rd(owner_rd_pa, &master_id)) {
-		res->smc_res.x[0] = RSI_ERROR_STATE;
-		INFO("Invalid master rd tag during share \n");
 		return;
 	}
 
