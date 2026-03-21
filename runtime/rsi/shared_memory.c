@@ -11,6 +11,7 @@
 #include <status.h>
 #include <granule.h>
 #include <apt.h>
+#include <apt_helpers.h>
 #include <csm_id.h>
 #include <debug.h>
 #include <buffer.h>
@@ -70,7 +71,7 @@ void handle_rsi_csm_create(struct rec *rec,
 		goto unmap;
 	}
 
-	region_index = apt_add_master(apt, region_id, base_ipa, size_ipa, 0, true);
+	region_index = apt_add_master(apt, region_id, base_ipa, size_ipa, true);
 	if (region_index == (int)SIZE_MAX) {
 		(void)csm_region_id_remove(region_id);
 		res->smc_res.x[0] = RSI_ERROR_STATE;
@@ -102,7 +103,6 @@ void handle_rsi_csm_share(struct rec *rec,
 	uint8_t slave_id = OWNER_TAG_DECODE(rec->regs[2]);
 	uint8_t permission = OWNER_TAG_DECODE(rec->regs[3]);
 	unsigned long slave_rd_pa = 0UL;
-	unsigned long owner_rd_pa = granule_addr(rec->realm_info.g_rd);
 	unsigned long apt_pa;
 	struct rd *rd;
 	struct granule *g_apt;
@@ -228,7 +228,7 @@ void handle_rsi_csm_reserve(struct rec *rec,
 	assert(apt_master != NULL);
 
 	
-	// 2- Finding the matching region in the master realm
+	// Finding the matching region in the master realm
 	master_region_index = apt_find_master_by_region_id(apt_master, region_id);
 	if (master_region_index != -1){
 		INFO(" Matching region found in master realm with base ipa = 0x%lx size = 0x%lx \n",
@@ -245,17 +245,18 @@ void handle_rsi_csm_reserve(struct rec *rec,
 							    slave_id);
 	if (master_share_slot < 0) {
 		res->smc_res.x[0] = RSI_ERROR_INPUT;
-		INFO("No sharing entry found for slave id = %x \n", slave_id);
+		INFO("No sharing entry found for slave id in this region = %x \n", slave_id);
 		goto unmap;
 	}
-
+	
+	// Make sure the sharing entry matches the requested IPA and size
 	if (apt_master->master_memory[master_region_index].map_size != size_ipa){
             res->smc_res.x[0] = RSI_ERROR_INPUT;
             INFO("Mismatching with IPA master_ipa_size =0x%lx and slave_ipa_size=0x%lx \n",
 		 apt_master->master_memory[master_region_index].map_size, size_ipa);
             goto unmap;			
     }
-	// 3- Make sure the specified region does not overlap with other master and slave regions
+	// Make sure the specified region does not overlap with other master and slave regions
 	enum apt_region_kind kind;
 	size_t idx;
 	bool conflict = apt_find_enabled_conflict(apt_slave, base_ipa, size_ipa, &kind, &idx, false);
@@ -269,10 +270,9 @@ void handle_rsi_csm_reserve(struct rec *rec,
 		goto unmap;
 	}
 		
-	// 4- Setting the slave region in the slave realm APT
+	// Setting the slave region in the slave realm APT
 	slave_region_index = apt_add_slave(apt_slave, master_id, region_id, master_rd_pa,
 					 base_ipa, size_ipa,
-					 apt_master->master_memory[master_region_index].shares[master_share_slot].permission,
 					 true);
 	INFO("Setting slave region with base ipa = 0x%lx size = 0x%lx region_index = %d\n", base_ipa, size_ipa, slave_region_index);
 

@@ -70,7 +70,9 @@ else()
 endif()
 
 target_sources(rmm-runtime
-    PRIVATE "core/exit.c"
+    PRIVATE "core/apt_helpers.c"
+            "core/csm_id.c"
+            "core/exit.c"
             "core/handler.c"
             "core/init.c"
             "core/inject_exp.c"

@@ -1,3 +1,6 @@
+#ifndef APT_H
+#define APT_H
+
 #include <sizes.h>
 #include <utils_def.h>
 
@@ -32,7 +35,6 @@ struct master_mem {
     uint8_t       region_ID;
     unsigned long ipa_start;
     unsigned long map_size;
-    uint8_t       flags;
     uint8_t       share_count;
     struct master_share shares[CSM_MAX_MASTER_SHARES];
 };
@@ -43,7 +45,6 @@ struct slave_mem {
     unsigned long master_rd_pa;
     unsigned long ipa_start;
     unsigned long map_size;
-    uint8_t       flags;
 };
 
 /* Enabled sets (unordered, packed) */
@@ -85,37 +86,6 @@ enum apt_region_kind {
     APT_REGION_SLAVE  = 1
 };
 
-/* Implemented in apt.c */
-void   apt_reset(struct apt *a);
-
-size_t apt_add_master(struct apt *a,
-                      uint8_t region_ID,
-                      unsigned long ipa_start,
-                      unsigned long map_size,
-                      uint8_t flags,
-                      bool enable_now);
-
-size_t apt_add_slave(struct apt *a,
-                     uint8_t master_ID,
-                     uint8_t region_ID,
-                     unsigned long master_rd_pa,
-                     unsigned long ipa_start,
-                     unsigned long map_size,
-                     uint8_t flags,
-                     bool enable_now);
-
-bool apt_enable_master_idx(struct apt *a, size_t idx);
-bool apt_disable_master_idx(struct apt *a, size_t idx);
-bool apt_enable_slave_idx(struct apt *a, size_t idx);
-bool apt_disable_slave_idx(struct apt *a, size_t idx);
-
-/* Conflict check vs currently enabled regions (masters + slaves) */
-bool apt_find_enabled_conflict(const struct apt *a,
-                                  unsigned long ipa_start,
-                                  unsigned long map_size,
-                                  enum apt_region_kind *kind_out,
-                                  size_t *idx_out,
-                                  bool skip_master_check);
 
 static inline uint32_t apt_make_sharing_id(uint8_t region_ID,
                                            uint8_t master_ID,
@@ -248,3 +218,5 @@ static inline int apt_find_free_slave(const struct apt *a) {
         if ((a->slave_used_mask & BIT64(i)) == 0) return (int)i;
     return -1;
 }
+
+#endif /* APT_H */
