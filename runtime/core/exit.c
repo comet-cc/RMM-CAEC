@@ -445,14 +445,20 @@ static bool handle_realm_rsi(struct rec *rec, struct rmi_rec_exit *rec_exit)
 	case SMC_RSI_HOST_CALL:
 		handle_rsi_host_call(rec, rec_exit, &res);
 		break;
-	case SMC_RSI_CSM_CONFIG_SET:
-		handle_rsi_shared_memory_set(rec, rec_exit, &res);
+	case SMC_RSI_CSM_CREATE:
+		handle_rsi_csm_create(rec, rec_exit, &res);
 		break;
-	case SMC_RSI_CSM_MAP:
-		handle_rsi_shared_memory_set_mapping(rec, rec_exit, &res);
+	case SMC_RSI_CSM_SHARE:
+		handle_rsi_csm_share(rec, rec_exit, &res);
+		break;
+	case SMC_RSI_CSM_RESERVE:
+		handle_rsi_csm_reserve(rec, rec_exit, &res);
+		break;
+	case SMC_RSI_CSM_ATTACH:
+		handle_rsi_csm_attach(rec, rec_exit, &res);
 		break;
 	case SMC_RSI_CSM_UNMAP:
-		handle_rsi_shared_memory_set_unmapping(rec, rec_exit, &res);
+		handle_rsi_csm_map(rec, rec_exit, &res);
 		break;
 	default:
 		res.action = UPDATE_REC_RETURN_TO_REALM;

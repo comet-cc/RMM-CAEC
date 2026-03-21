@@ -15,15 +15,26 @@ struct granule;
 #define MAX_MEM_REGIONS 20
 #endif
 
+#ifndef CSM_MAX_MASTER_SHARES
+#define CSM_MAX_MASTER_SHARES 3
+#endif
+
 /* -------- Region records -------- */
 
-struct master_mem {
+struct master_share {
     uint8_t       slave_ID;
-    uint8_t       region_ID;
     unsigned long slave_rd_pa;
+    uint8_t       permission;
+    bool          in_use;
+};
+
+struct master_mem {
+    uint8_t       region_ID;
     unsigned long ipa_start;
     unsigned long map_size;
     uint8_t       flags;
+    uint8_t       share_count;
+    struct master_share shares[CSM_MAX_MASTER_SHARES];
 };
 
 struct slave_mem {
@@ -78,8 +89,7 @@ enum apt_region_kind {
 void   apt_reset(struct apt *a);
 
 size_t apt_add_master(struct apt *a,
-                      uint8_t slave_ID,
-                      unsigned long slave_rd_pa,
+                      uint8_t region_ID,
                       unsigned long ipa_start,
                       unsigned long map_size,
                       uint8_t flags,
@@ -87,6 +97,7 @@ size_t apt_add_master(struct apt *a,
 
 size_t apt_add_slave(struct apt *a,
                      uint8_t master_ID,
+                     uint8_t region_ID,
                      unsigned long master_rd_pa,
                      unsigned long ipa_start,
                      unsigned long map_size,
@@ -105,6 +116,30 @@ bool apt_find_enabled_conflict(const struct apt *a,
                                   enum apt_region_kind *kind_out,
                                   size_t *idx_out,
                                   bool skip_master_check);
+
+static inline uint32_t apt_make_sharing_id(uint8_t region_ID,
+                                           uint8_t master_ID,
+                                           uint8_t slave_ID)
+{
+    return ((uint32_t)region_ID << 16) |
+           ((uint32_t)master_ID << 8) |
+           (uint32_t)slave_ID;
+}
+
+static inline uint8_t apt_sharing_region_id(uint32_t sharing_ID)
+{
+    return (uint8_t)((sharing_ID >> 16) & 0xFFU);
+}
+
+static inline uint8_t apt_sharing_master_id(uint32_t sharing_ID)
+{
+    return (uint8_t)((sharing_ID >> 8) & 0xFFU);
+}
+
+static inline uint8_t apt_sharing_slave_id(uint32_t sharing_ID)
+{
+    return (uint8_t)(sharing_ID & 0xFFU);
+}
 
                                 
 /* -------- Small inline helpers (header-only) -------- */
@@ -144,6 +179,62 @@ apt_enabled_slave_at(const struct apt *a, size_t pos) {
 }
 static inline size_t apt_enabled_slave_index_at(const struct apt *a, size_t pos) {
     return a->enabled_sr.index[pos];
+}
+
+static inline int apt_find_master_by_region_id(const struct apt *a, uint8_t region_ID)
+{
+    for (size_t i = 0; i < MAX_MEM_REGIONS; ++i) {
+        if ((a->master_used_mask & BIT64(i)) &&
+            a->master_memory[i].region_ID == region_ID) {
+            return (int)i;
+        }
+    }
+
+    return -1;
+}
+
+static inline int apt_find_master_share_slot(const struct master_mem *m, uint8_t slave_ID)
+{
+    for (size_t i = 0; i < CSM_MAX_MASTER_SHARES; ++i) {
+        if (m->shares[i].in_use && m->shares[i].slave_ID == slave_ID) {
+            return (int)i;
+        }
+    }
+
+    return -1;
+}
+
+static inline bool apt_master_add_share(struct apt *a,
+                                        size_t idx,
+                                        uint8_t slave_ID,
+                                        unsigned long slave_rd_pa,
+                                        uint8_t permission)
+{
+    if (!apt_idx_in_range(idx)) {
+        return false;
+    }
+    if ((a->master_used_mask & BIT64(idx)) == 0U) {
+        return false;
+    }
+
+    struct master_mem *m = &a->master_memory[idx];
+
+    if (apt_find_master_share_slot(m, slave_ID) >= 0) {
+        return false;
+    }
+
+    for (size_t i = 0; i < CSM_MAX_MASTER_SHARES; ++i) {
+        if (!m->shares[i].in_use) {
+            m->shares[i].slave_ID    = slave_ID;
+            m->shares[i].slave_rd_pa = slave_rd_pa;
+            m->shares[i].permission  = permission;
+            m->shares[i].in_use      = true;
+            m->share_count++;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /* Optional: quick “find free slot” helpers in header */

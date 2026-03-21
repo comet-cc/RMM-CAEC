@@ -191,8 +191,7 @@ void apt_reset(struct apt *a) {
 }
 
 size_t apt_add_master(struct apt *a,
-                      uint8_t slave_ID,
-                      unsigned long slave_rd_pa,
+                      uint8_t region_ID,
                       unsigned long ipa_start,
                       unsigned long map_size,
                       uint8_t flags,
@@ -203,11 +202,12 @@ size_t apt_add_master(struct apt *a,
         return SIZE_MAX;
 
     struct master_mem *m = &a->master_memory[idx];
-    m->slave_ID    = slave_ID;
-    m->slave_rd_pa = slave_rd_pa;
+    m->region_ID   = region_ID;
     m->ipa_start   = ipa_start;
     m->map_size    = map_size;
     m->flags       = flags;
+    m->share_count = 0U;
+    memset(m->shares, 0, sizeof(m->shares));
 
     a->master_used_mask |= BIT64(idx);
 
@@ -215,14 +215,15 @@ size_t apt_add_master(struct apt *a,
         enable_push_master(a, idx);
     }
 
-    INFO("apt_add_master: idx=%lu slave_ID=%u slave_rd_pa=0x%lx ipa_start=0x%lx map_size=0x%lx flags=%u enable_now=%d\n",
-         idx, slave_ID, slave_rd_pa, ipa_start, map_size, flags, enable_now);
+    INFO("apt_add_master: idx=%lu region_ID=%u ipa_start=0x%lx map_size=0x%lx flags=%u enable_now=%d\n",
+         idx, region_ID, ipa_start, map_size, flags, enable_now);
 
     return idx;
 }
 
 size_t apt_add_slave(struct apt *a,
                      uint8_t master_ID,
+                     uint8_t region_ID,
                      unsigned long master_rd_pa,
                      unsigned long ipa_start,
                      unsigned long map_size,
@@ -234,6 +235,7 @@ size_t apt_add_slave(struct apt *a,
 
     struct slave_mem *s = &a->slave_memory[idx];
     s->master_ID    = master_ID;
+    s->region_ID    = region_ID;
     s->master_rd_pa = master_rd_pa;
     s->ipa_start    = ipa_start;
     s->map_size     = map_size;
@@ -245,8 +247,8 @@ size_t apt_add_slave(struct apt *a,
         enable_push_slave(a, idx);
     }
 
-    INFO("apt_add_slave: idx=%lu master_ID=%u master_rd_pa=0x%lx ipa_start=0x%lx map_size=0x%lx flags=%u enable_now=%d\n",
-         idx, master_ID, master_rd_pa, ipa_start, map_size, flags, enable_now);
+    INFO("apt_add_slave: idx=%lu master_ID=%u region_ID=%u master_rd_pa=0x%lx ipa_start=0x%lx map_size=0x%lx flags=%u enable_now=%d\n",
+         idx, master_ID, region_ID, master_rd_pa, ipa_start, map_size, flags, enable_now);
 
     return idx;
 }
@@ -313,5 +315,3 @@ bool apt_find_enabled_conflict(const struct apt *a,
 
     return false; /* no conflicts */
 }
-
-

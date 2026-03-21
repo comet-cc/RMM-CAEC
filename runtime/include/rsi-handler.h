@@ -95,14 +95,14 @@ void handle_rsi_attest_token_continue(struct rec *rec,
 void handle_psci(struct rec *rec, struct rmi_rec_exit *rec_exit,
 		 struct rsi_result *res);
 
-void handle_rsi_shared_memory_set(struct rec *rec, struct rmi_rec_exit *rec_exit,
+void handle_rsi_csm_create(struct rec *rec, struct rmi_rec_exit *rec_exit,
                  struct rsi_result *res);
-void handle_rsi_shared_memory_set_master(struct rec *rec, struct rmi_rec_exit *rec_exit,
+void handle_rsi_csm_share(struct rec *rec, struct rmi_rec_exit *rec_exit,
                  struct rsi_result *res);
-void handle_rsi_shared_memory_set_slave(struct rec *rec, struct rmi_rec_exit *rec_exit,
+void handle_rsi_csm_reserve(struct rec *rec, struct rmi_rec_exit *rec_exit,
                  struct rsi_result *res);
-void handle_rsi_shared_memory_set_mapping(struct rec *rec, struct rmi_rec_exit *rec_exit,
+void handle_rsi_csm_attach(struct rec *rec, struct rmi_rec_exit *rec_exit,
                  struct rsi_result *res);
-void handle_rsi_shared_memory_set_unmapping(struct rec *rec, struct rmi_rec_exit *rec_exit,
+void handle_rsi_csm_map(struct rec *rec, struct rmi_rec_exit *rec_exit,
                  struct rsi_result *res);
 #endif /* RSI_HANDLER_H */
