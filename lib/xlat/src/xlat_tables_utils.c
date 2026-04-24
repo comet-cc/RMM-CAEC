@@ -62,58 +62,6 @@ void xlat_mmap_print(const struct xlat_ctx *ctx)
 	VERBOSE("\n");
 }
 
-/* Print the attributes of the specified block descriptor. */
-static void xlat_desc_print(uint64_t desc)
-{
-	uint64_t mem_type_index = ATTR_INDEX_GET(desc);
-
-	if (mem_type_index == ATTR_IWBWA_OWBWA_NTR_INDEX) {
-		VERBOSE("MEM");
-	} else {
-		if (mem_type_index != ATTR_DEVICE_INDEX) {
-			/* Unsupported memory type */
-			panic();
-		}
-		VERBOSE("DEV");
-	}
-
-	VERBOSE(((desc & LOWER_ATTRS(AP_RO)) != 0ULL) ? "-RO" : "-RW");
-	VERBOSE(((desc & UPPER_ATTRS(PXN)) != 0ULL) ? "-PXN" : "-PEXEC");
-	VERBOSE(((desc & UPPER_ATTRS(XN)) != 0ULL) ? "-XN" : "-EXEC");
-
-	if ((desc & LOWER_ATTRS(NS)) == 0ULL) {
-		VERBOSE("-RL");
-	} else {
-		VERBOSE("-N");
-	}
-
-	/* Check Guarded Page bit */
-	if ((desc & UPPER_ATTRS(GP)) != 0ULL) {
-		VERBOSE("-GP");
-	}
-	#if ENABLE_OPENCCA
-	if ((desc & LOWER_ATTRS(NG_HINT)) != 0ULL) {
-		VERBOSE("-NG");
-	} else {
-		VERBOSE("-G");
-	}
-	#endif
-}
-
-static const char * const level_spacers[] = {
-	"[LV-1] ",
-	"  [LV0] ",
-	"    [LV1] ",
-	"      [LV2] ",
-	"        [LV3] "
-};
-
-static char *invalid_descriptors_ommited =
-		"%s(%d invalid descriptors omitted)\n";
-
-static char *tr_invalid_descriptors_ommited =
-		"%s(%d transient invalid descriptors omitted)\n";
-
 /*
  * Recursive function that reads the translation tables passed as an argument
  * and prints their status.
@@ -130,7 +78,6 @@ static void xlat_tables_print_internal(struct xlat_ctx *ctx,
 	uint64_t prev_desc;
 	size_t level_size;
 	uintptr_t table_idx_va;
-	char *str = NULL;
 
 	if (level > XLAT_TABLE_LEVEL_MAX) {
 		/* Level out of bounds */
@@ -166,23 +113,21 @@ static void xlat_tables_print_internal(struct xlat_ctx *ctx,
 		if ((is_invalid == true) || (is_transient_inv == true)) {
 			if (multiple_row_count == 0U) {
 				prev_desc = desc;
-				VERBOSE("%sVA:0x%lx size:0x%zx\n",
+				/* VERBOSE("%sVA:0x%lx size:0x%zx\n",
 					level_spacers[level + 1],
-					table_idx_va, level_size);
+					table_idx_va, level_size); */
 
 
 				if (is_invalid == true) {
-					str = invalid_descriptors_ommited;
 				} else {
-					str = tr_invalid_descriptors_ommited;
 				}
 			}
 			multiple_row_count++;
 
 		} else {
 			if ((multiple_row_count > 0U) && (prev_desc != desc)) {
-				VERBOSE(str, level_spacers[level + 1],
-					multiple_row_count - 1U);
+				/* VERBOSE(str, level_spacers[level + 1],
+					multiple_row_count - 1U); */
 				multiple_row_count = 0U;
 			}
 
@@ -199,9 +144,9 @@ static void xlat_tables_print_internal(struct xlat_ctx *ctx,
 				 * but instead points to the next translation
 				 * table in the translation table walk.
 				 */
-				VERBOSE("%sVA:0x%lx size:0x%zx\n",
+				/* VERBOSE("%sVA:0x%lx size:0x%zx\n",
 				       level_spacers[level + 1],
-				       table_idx_va, level_size);
+				       table_idx_va, level_size); */
 
 				addr_inner =
 					(uint64_t *)(void *)xlat_get_oa_from_tte(desc);
@@ -210,15 +155,15 @@ static void xlat_tables_print_internal(struct xlat_ctx *ctx,
 				xlat_tables_print_internal(ctx, table_idx_va,
 					addr_inner, level + 1U);
 			} else {
-				VERBOSE("%sVA:0x%lx PA:0x%lx size:0x%zx ",
+				/* VERBOSE("%sVA:0x%lx PA:0x%lx size:0x%zx ",
 				       level_spacers[level + 1], table_idx_va,
 				       (uint64_t)xlat_get_oa_from_tte(desc),
-				       level_size);
-				xlat_desc_print(desc);
+				       level_size); */
+				/* xlat_desc_print(desc); */
 				if (desc & TRANSIENT_DESC) {
-					VERBOSE("[TRANSIENT]");
+					/* VERBOSE("[TRANSIENT]"); */
 				}
-				VERBOSE("\n");
+				/* VERBOSE("\n"); */
 			}
 		}
 
@@ -227,8 +172,8 @@ static void xlat_tables_print_internal(struct xlat_ctx *ctx,
 	}
 
 	if (multiple_row_count > 1U) {
-		VERBOSE(str, level_spacers[level + 1],
-						multiple_row_count - 1U);
+		/* VERBOSE(str, level_spacers[level + 1],
+						multiple_row_count - 1U); */
 	}
 }
 
