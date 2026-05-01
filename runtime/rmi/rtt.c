@@ -1006,6 +1006,305 @@ out_unmap_rd:
 	return ret;
 }
 
+/*
+ * After a successful DATA_CREATE or DATA_CREATE_UNKNOWN for map_addr inside
+ * a CSM region, mirror the new physical mapping (data_addr -> map_addr) into
+ * every other realm that shares that region.
+ *
+ * Locking order: calling-realm RD → calling-realm APT →
+ *                partner RD (SLOT_RD2) → partner APT (SLOT_APT2)
+ */
+static void csm_propagate_create(unsigned long rd_addr,
+				 unsigned long data_addr,
+				 unsigned long map_addr)
+{
+	struct granule *g_rd, *g_apt;
+	struct rd *rd;
+	struct apt *apt;
+	unsigned long apt_pa;
+	size_t pos;
+
+	g_rd = find_lock_granule(rd_addr, GRANULE_STATE_RD);
+	if (g_rd == NULL)
+		return;
+
+	rd = buffer_granule_map(g_rd, SLOT_RD);
+	assert(rd != NULL);
+	apt_pa = rd->apt_pa;
+
+	if (apt_pa == 0UL)
+		goto out_rd;
+
+	g_apt = find_lock_granule(apt_pa, GRANULE_STATE_APT);
+	if (g_apt == NULL)
+		goto out_rd;
+
+	apt = buffer_granule_map(g_apt, SLOT_APT);
+	assert(apt != NULL);
+
+	/* Calling realm is MASTER: propagate to each registered slave. */
+	for (pos = 0; pos < apt_enabled_master_len(apt); pos++) {
+		size_t midx = apt_enabled_master_index_at(apt, pos);
+		const struct master_mem *m = &apt->master_memory[midx];
+
+		if (map_addr < m->ipa_start ||
+		    map_addr >= m->ipa_start + m->map_size)
+			continue;
+
+		unsigned long offset  = map_addr - m->ipa_start;
+		uint8_t       rid     = m->region_ID;
+
+		for (size_t si = 0; si < CSM_MAX_MASTER_SHARES; si++) {
+			if (!m->shares[si].in_use)
+				continue;
+
+			unsigned long slave_rd_pa = m->shares[si].slave_rd_pa;
+			struct granule *g_srd = find_lock_granule(slave_rd_pa,
+							GRANULE_STATE_RD);
+			if (g_srd == NULL)
+				continue;
+
+			struct rd *srd = buffer_granule_map(g_srd, SLOT_RD2);
+			assert(srd != NULL);
+
+			struct granule *g_sapt = find_lock_granule(srd->apt_pa,
+							GRANULE_STATE_APT);
+			if (g_sapt == NULL) {
+				buffer_unmap(srd);
+				granule_unlock(g_srd);
+				continue;
+			}
+
+			struct apt *sapt = buffer_granule_map(g_sapt, SLOT_APT2);
+			assert(sapt != NULL);
+
+			unsigned long slave_ipa = 0;
+			bool found = false;
+			for (size_t sj = 0; sj < MAX_MEM_REGIONS; sj++) {
+				if ((sapt->slave_used_mask & BIT64(sj)) &&
+				    sapt->slave_memory[sj].region_ID == rid) {
+					slave_ipa = sapt->slave_memory[sj].ipa_start + offset;
+					found = true;
+					break;
+				}
+			}
+
+			buffer_unmap(sapt);
+			granule_unlock(g_sapt);
+
+			if (found)
+				map_ipa_to_pa(srd, data_addr, slave_ipa);
+
+			buffer_unmap(srd);
+			granule_unlock(g_srd);
+		}
+		break; /* map_addr is in exactly one master region */
+	}
+
+	/* Calling realm is SLAVE: propagate to master. */
+	for (pos = 0; pos < apt_enabled_slave_len(apt); pos++) {
+		size_t sidx = apt_enabled_slave_index_at(apt, pos);
+		const struct slave_mem *s = &apt->slave_memory[sidx];
+
+		if (map_addr < s->ipa_start ||
+		    map_addr >= s->ipa_start + s->map_size)
+			continue;
+
+		unsigned long offset      = map_addr - s->ipa_start;
+		unsigned long master_rdpa = s->master_rd_pa;
+		uint8_t       rid         = s->region_ID;
+
+		struct granule *g_mrd = find_lock_granule(master_rdpa,
+						GRANULE_STATE_RD);
+		if (g_mrd == NULL)
+			break;
+
+		struct rd *mrd = buffer_granule_map(g_mrd, SLOT_RD2);
+		assert(mrd != NULL);
+
+		struct granule *g_mapt = find_lock_granule(mrd->apt_pa,
+						GRANULE_STATE_APT);
+		if (g_mapt == NULL) {
+			buffer_unmap(mrd);
+			granule_unlock(g_mrd);
+			break;
+		}
+
+		struct apt *mapt = buffer_granule_map(g_mapt, SLOT_APT2);
+		assert(mapt != NULL);
+
+		int mi = apt_find_master_by_region_id(mapt, rid);
+		unsigned long master_ipa = 0;
+		bool found = (mi >= 0);
+		if (found)
+			master_ipa = mapt->master_memory[mi].ipa_start + offset;
+
+		buffer_unmap(mapt);
+		granule_unlock(g_mapt);
+
+		if (found)
+			map_ipa_to_pa(mrd, data_addr, master_ipa);
+
+		buffer_unmap(mrd);
+		granule_unlock(g_mrd);
+		break; /* map_addr is in exactly one slave region */
+	}
+
+	buffer_unmap(apt);
+	granule_unlock(g_apt);
+out_rd:
+	buffer_unmap(rd);
+	granule_unlock(g_rd);
+}
+
+/*
+ * After a successful DATA_DESTROY for map_addr inside a CSM region, remove
+ * the corresponding page-level mapping from every other sharing realm.
+ *
+ * Same locking order as csm_propagate_create.
+ */
+static void csm_propagate_destroy(unsigned long rd_addr,
+				  unsigned long map_addr)
+{
+	struct granule *g_rd, *g_apt;
+	struct rd *rd;
+	struct apt *apt;
+	unsigned long apt_pa;
+	size_t pos;
+
+	g_rd = find_lock_granule(rd_addr, GRANULE_STATE_RD);
+	if (g_rd == NULL)
+		return;
+
+	rd = buffer_granule_map(g_rd, SLOT_RD);
+	assert(rd != NULL);
+	apt_pa = rd->apt_pa;
+
+	if (apt_pa == 0UL)
+		goto out_rd;
+
+	g_apt = find_lock_granule(apt_pa, GRANULE_STATE_APT);
+	if (g_apt == NULL)
+		goto out_rd;
+
+	apt = buffer_granule_map(g_apt, SLOT_APT);
+	assert(apt != NULL);
+
+	/* Calling realm is MASTER: unmap from each registered slave. */
+	for (pos = 0; pos < apt_enabled_master_len(apt); pos++) {
+		size_t midx = apt_enabled_master_index_at(apt, pos);
+		const struct master_mem *m = &apt->master_memory[midx];
+
+		if (map_addr < m->ipa_start ||
+		    map_addr >= m->ipa_start + m->map_size)
+			continue;
+
+		unsigned long offset = map_addr - m->ipa_start;
+		uint8_t       rid    = m->region_ID;
+
+		for (size_t si = 0; si < CSM_MAX_MASTER_SHARES; si++) {
+			if (!m->shares[si].in_use)
+				continue;
+
+			unsigned long slave_rd_pa = m->shares[si].slave_rd_pa;
+			struct granule *g_srd = find_lock_granule(slave_rd_pa,
+							GRANULE_STATE_RD);
+			if (g_srd == NULL)
+				continue;
+
+			struct rd *srd = buffer_granule_map(g_srd, SLOT_RD2);
+			assert(srd != NULL);
+
+			struct granule *g_sapt = find_lock_granule(srd->apt_pa,
+							GRANULE_STATE_APT);
+			if (g_sapt == NULL) {
+				buffer_unmap(srd);
+				granule_unlock(g_srd);
+				continue;
+			}
+
+			struct apt *sapt = buffer_granule_map(g_sapt, SLOT_APT2);
+			assert(sapt != NULL);
+
+			unsigned long slave_ipa = 0;
+			bool found = false;
+			for (size_t sj = 0; sj < MAX_MEM_REGIONS; sj++) {
+				if ((sapt->slave_used_mask & BIT64(sj)) &&
+				    sapt->slave_memory[sj].region_ID == rid) {
+					slave_ipa = sapt->slave_memory[sj].ipa_start + offset;
+					found = true;
+					break;
+				}
+			}
+
+			buffer_unmap(sapt);
+			granule_unlock(g_sapt);
+
+			if (found)
+				unmap_ipa_from_rd(srd, slave_ipa);
+
+			buffer_unmap(srd);
+			granule_unlock(g_srd);
+		}
+		break;
+	}
+
+	/* Calling realm is SLAVE: unmap from master. */
+	for (pos = 0; pos < apt_enabled_slave_len(apt); pos++) {
+		size_t sidx = apt_enabled_slave_index_at(apt, pos);
+		const struct slave_mem *s = &apt->slave_memory[sidx];
+
+		if (map_addr < s->ipa_start ||
+		    map_addr >= s->ipa_start + s->map_size)
+			continue;
+
+		unsigned long offset      = map_addr - s->ipa_start;
+		unsigned long master_rdpa = s->master_rd_pa;
+		uint8_t       rid         = s->region_ID;
+
+		struct granule *g_mrd = find_lock_granule(master_rdpa,
+						GRANULE_STATE_RD);
+		if (g_mrd == NULL)
+			break;
+
+		struct rd *mrd = buffer_granule_map(g_mrd, SLOT_RD2);
+		assert(mrd != NULL);
+
+		struct granule *g_mapt = find_lock_granule(mrd->apt_pa,
+						GRANULE_STATE_APT);
+		if (g_mapt == NULL) {
+			buffer_unmap(mrd);
+			granule_unlock(g_mrd);
+			break;
+		}
+
+		struct apt *mapt = buffer_granule_map(g_mapt, SLOT_APT2);
+		assert(mapt != NULL);
+
+		int mi = apt_find_master_by_region_id(mapt, rid);
+		unsigned long master_ipa = 0;
+		bool found = (mi >= 0);
+		if (found)
+			master_ipa = mapt->master_memory[mi].ipa_start + offset;
+
+		buffer_unmap(mapt);
+		granule_unlock(g_mapt);
+
+		if (found)
+			unmap_ipa_from_rd(mrd, master_ipa);
+
+		buffer_unmap(mrd);
+		granule_unlock(g_mrd);
+		break;
+	}
+
+	buffer_unmap(apt);
+	granule_unlock(g_apt);
+out_rd:
+	buffer_unmap(rd);
+	granule_unlock(g_rd);
+}
+
 unsigned long smc_data_create(unsigned long rd_addr,
 			      unsigned long data_addr,
 			      unsigned long map_addr,
@@ -1013,12 +1312,7 @@ unsigned long smc_data_create(unsigned long rd_addr,
 			      unsigned long flags)
 {
 	struct granule *g_src;
-
-	if (check_valid_csrange(rd_addr, map_addr) != 0) {
-		//INFO("Invalid range for data_create rd_addr = 0x%lx, map_addr = 0x%lx \n",
-			//rd_addr, map_addr);
-		//return RMI_ERROR_INPUT;
-	}
+	unsigned long ret;
 
 	if ((flags != RMI_NO_MEASURE_CONTENT) &&
 	    (flags != RMI_MEASURE_CONTENT)) {
@@ -1031,202 +1325,24 @@ unsigned long smc_data_create(unsigned long rd_addr,
 		return RMI_ERROR_INPUT;
 	}
 
-	return data_create(rd_addr, data_addr, map_addr, g_src, flags);
+	ret = data_create(rd_addr, data_addr, map_addr, g_src, flags);
+	if (ret == RMI_SUCCESS)
+		csm_propagate_create(rd_addr, data_addr, map_addr);
+
+	return ret;
 }
+
 unsigned long smc_data_create_unknown(unsigned long rd_addr,
 				      unsigned long data_addr,
 				      unsigned long map_addr)
 {
+	unsigned long ret = data_create(rd_addr, data_addr, map_addr, NULL, 0);
 
-	if (check_valid_csrange(rd_addr, map_addr) != 0) {
-	//	INFO("Invalid range for data_create_unkonwn  rd_addr = 0x%lx, map_addr = 0x%lx \n",
-		//	rd_addr, map_addr);
-		//return RMI_ERROR_INPUT;
-	}
-	return data_create(rd_addr, data_addr, map_addr, NULL, 0);
-}
-/*
-unsigned long check_master(unsigned lon rd_addr)
-{
-	struct granule *g_rd;
-	struct rd *rd;
-	struct granule *g_apt;
-	struct apt *apt;
-	int ret = 1;
-	
-	g_rd = find_lock_granule(rd_addr, GRANULE_STATE_RD);
-	if (g_rd == NULL) {
-		ret = -1;
-		return ret;
-	}
+	if (ret == RMI_SUCCESS)
+		csm_propagate_create(rd_addr, data_addr, map_addr);
 
-	rd = buffer_granule_map(g_rd, SLOT_RD);
-	assert(rd != NULL);
-
-	g_apt = find_lock_granule(rd->apt_pa, GRANULE_STATE_APT);
-	if (g_apt == NULL) {
-		ret = -1;
-		goto unmap_rd;
-	}
-
-	apt = buffer_granule_map(g_apt, SLOT_APT);
-
-	if (apt == NULL) {
-		ret = -1;
-	    goto unmap_apt;
-    }
-
-	if (apt->master_memory.enable == true) {
-		return 1;
-	} else if (apt->slave_memory.enable == true) {
-		return -1;
-	} else {
-		return 0;
-	}
-unmap_apt:
-	buffer_unmap(apt);
-	granule_unlock(g_apt);
-unmap_rd:
-	buffer_unmap(rd);
-	granule_unlock(g_rd);
 	return ret;
 }
-	*/
-
-unsigned long check_valid_csrange(unsigned long rd_addr,
-				      unsigned long map_addr)
-{
-	struct granule *g_rd;
-	struct rd *rd;
-	struct granule *g_apt;
-	struct apt *apt;
-	int ret = 1;
-	
-
-	g_rd = find_lock_granule(rd_addr, GRANULE_STATE_RD);
-	if (g_rd == NULL) {
-		ret = -1;
-		return ret;
-	}
-
-	rd = buffer_granule_map(g_rd, SLOT_RD);
-	assert(rd != NULL);
-
-	g_apt = find_lock_granule(rd->apt_pa, GRANULE_STATE_APT);
-	if (g_apt == NULL) {
-		ret = -1;
-		goto unmap_rd;
-	}
-
-	apt = buffer_granule_map(g_apt, SLOT_APT);
-
-	if (apt == NULL) {
-		ret = -1;
-	    goto unmap_apt;
-    }
-	
-	//if (map_addr < apt->csdata_ipa_begin || map_addr > apt->csdata_ipa_end) {
-    //	ret = 0;
-    	//goto unmap_apt;
-//	}
-//	INFO("check_valid_csrange: the address is in the CSData region: map_addr = 0x%lx   0x%lx  0x%lx \n",
-//		 map_addr, apt->csdata_ipa_begin, apt->csdata_ipa_end);
-	//if (apt->slave_memory.enable == true && (map_addr < apt->slave_memory.ipa_start || map_addr > (apt->slave_memory.ipa_start+ apt->slave_memory.map_size))) {
-	//	ret = 0;
-	//	INFO("check_valid_csrange: the address is in the CSM region belong to another realm: rd_addr = 0x%lx, map_addr = 0x%lx   0x%lx  0x%lx \n",
-	//	rd_addr, map_addr, apt->slave_memory.ipa_start, (apt->slave_memory.ipa_start+ apt->slave_memory.map_size));
-	//	goto unmap_apt;
-//	}
-
-unmap_apt:
-	buffer_unmap(apt);
-	granule_unlock(g_apt);
-unmap_rd:
-	buffer_unmap(rd);
-	granule_unlock(g_rd);
-	return ret;
-}						  
-
-/*
-{
-	//struct granule *g_src;	
-	//uint8_t tag;
-	//if(check_master(rd_addr) == 1
-	INFO("smc_csdata_create: rd_addr = 0x%lx, data_addr = 0x%lx, map_addr = 0x%lx, src_addr = 0x%lx, flags = %lu \n",
-		rd_addr, data_addr, map_addr, src_addr, flags);
-	if (check_valid_csrange(rd_addr, map_addr) != 1) {
-	INFO("Invalid CS range for csdata_create \n");
-		return RMI_ERROR_INPUT;
-	}
-
-	struct granule *g_rd;
-	//struct granule =*g_rd2;
-	//struct rd *rd2;
-	struct rd *rd;
-	struct granule *g_apt;
-	struct apt *apt;
-	int ret = 1;
-	
-
-	g_rd = find_lock_granule(rd_addr, GRANULE_STATE_RD);
-	if (g_rd == NULL) {
-		ret = -1;
-		return ret;
-	}
-	rd = buffer_granule_map(g_rd, SLOT_RD2);
-	assert(rd != NULL);
-	g_apt = find_lock_granule(rd->apt_pa, GRANULE_STATE_APT);
-	if (g_apt == NULL) {
-		ret = -1;
-		goto unmap_rd;
-	}
-	apt = buffer_granule_map(g_apt, SLOT_APT);
-	if (apt == NULL) {
-		ret = -1;
-	    goto unmap_apt;
-    }
-    INFO("sadasdsadw \n"); 
-	ret = data_create(rd_addr, data_addr, map_addr, NULL, 0);
-	INFO("smc_csdata_create: ret = %u \n", ret);
-
-	if(ret == RMI_SUCCESS) {
-		realm_tag_get_by_rd(rd_addr, &tag);
-		granule_owner_set(data_addr, tag);
-		if (apt->master_memory.enable == true && apt->master_memory.ipa_start <= map_addr && 
-		map_addr < (apt->master_memory.ipa_start + apt->master_memory.map_size)) {
-			g_rd2 = find_lock_granule(apt->master_memory.slave_rd_pa, GRANULE_STATE_RD);
-			assert(g_rd2 == NULL);
-			rd2 = buffer_granule_map(g_rd2, SLOT_RD2);
-			assert(rd2 != NULL);
-		// map into the slave realm
-		map_ipa_to_pa(rd2, data_addr, map_addr);
-		}
-		else if (apt->slave_memory.enable == true && apt->slave_memory.ipa_start <= map_addr && 
-		map_addr < (apt->slave_memory.ipa_start + apt->slave_memory.map_size)) {
-			g_rd2 = find_lock_granule(apt->slave_memory.master_rd_pa, GRANULE_STATE_RD);
-			assert(g_rd2 == NULL);
-			rd2 = buffer_granule_map(g_rd2, SLOT_RD2);
-			assert(rd2 != NULL);
-			// map into the master realm
-			map_ipa_to_pa(rd2, data_addr, map_addr);
-			
-		}//	INFO("data_addr = 0x%lx, tag = %d \n", data_addr, tag);
-	} 
-
-	// && realm_tag_get_by_rd(rd_addr, &tag) == true) {
-		//granule_owner_set(data_addr, tag);
-	//	INFO("data_addr = 0x%lx, tag = %d \n", data_addr, tag);
-
-unmap_apt:
-	buffer_unmap(apt);
-	granule_unlock(g_apt);
-unmap_rd:
-	buffer_unmap(rd);
-	granule_unlock(g_rd);
-	return ret;
-}
-*/
-
 void smc_data_destroy(unsigned long rd_addr,
 		      unsigned long map_addr,
 		      struct smc_result *res)
@@ -1237,13 +1353,6 @@ void smc_data_destroy(unsigned long rd_addr,
 	unsigned long data_addr, s2tte, *s2tt;
 	struct rd *rd;
 	struct s2tt_context s2_ctx;
-
-//	if (check_valid_csrange(rd_addr, map_addr) != 0) {
-	//	INFO("Invalid CS range for data_destroy map_addr = 0x%lx\n", map_addr);
-	//	res->x[0] = RMI_ERROR_INPUT;
-	//	res->x[2] = 0UL;
-	//	return;
-	//}
 
 	g_rd = find_lock_granule(rd_addr, GRANULE_STATE_RD);
 	if (g_rd == NULL) {
@@ -1320,58 +1429,11 @@ out_unmap_ll_table:
 	res->x[2] = s2tt_skip_non_live_entries(&s2_ctx, map_addr, s2tt, &wi);
 	buffer_unmap(s2tt);
 	granule_unlock(wi.g_llt);
+
+	/* Propagate unmap to all realms sharing this CSM region. */
+	if (res->x[0] == RMI_SUCCESS)
+		csm_propagate_destroy(rd_addr, map_addr);
 }
-
-	
-		//if (apt->master_memory.enable == true && apt->master_memory.ipa_start <= map_addr && 
-		//map_addr < (apt->master_memory.ipa_start + apt->master_memory.map_size)) {
-		// unmap from the RTT ofslave realm
-		//map_ipa_to_pa(apt->master_memory.slave_rd_pa, data_addr, map_addr);
-		//}
-		//else if (apt->slave_memory.enable == true && apt->slave_memory.ipa_start <= map_addr && 
-		//map_addr < (apt->slave_memory.ipa_start + apt->slave_memory.map_size)) {
-			// unmap from the RTT of master realm
-			//map_ipa_to_pa(apt->slave_memory.master_rd_pa, data_addr, map_addr);
-			
-		//}//	INFO("data_addr = 0x%lx, tag = %d \n", data_addr, tag);
-/*
-	s2tt_walk_lock_unlock(&s2_ctx, map_addr, S2TT_PAGE_LEVEL, &wi);
-	s2tt = buffer_granule_map(wi.g_llt, SLOT_RTT);
-	assert(s2tt != NULL);
-
-	if (wi.last_level != S2TT_PAGE_LEVEL) {
-		res->x[0] = pack_return_code(RMI_ERROR_RTT,
-						(unsigned char)wi.last_level);
-		goto out_unmap_ll_table;
-	}
-
-	s2tte = s2tte_read(&s2tt[wi.index]);
-	if (s2tte_is_assigned_ram(&s2_ctx, s2tte, S2TT_PAGE_LEVEL)) {
-		data_addr = s2tte_pa(&s2_ctx, s2tte, S2TT_PAGE_LEVEL);
-		s2tte = s2tte_create_unassigned_destroyed(&s2_ctx);
-		s2tte_write(&s2tt[wi.index], s2tte);
-		s2tt_invalidate_page(&s2_ctx, map_addr);
-	} else if (s2tte_is_assigned_empty(&s2_ctx, s2tte, S2TT_PAGE_LEVEL)) {
-		data_addr = s2tte_pa(&s2_ctx, s2tte, S2TT_PAGE_LEVEL);
-		s2tte = s2tte_create_unassigned_empty(&s2_ctx);
-		s2tte_write(&s2tt[wi.index], s2tte);
-	} else if (s2tte_is_assigned_destroyed(&s2_ctx, s2tte,
-					       S2TT_PAGE_LEVEL)) {
-		data_addr = s2tte_pa(&s2_ctx, s2tte, S2TT_PAGE_LEVEL);
-		s2tte = s2tte_create_unassigned_destroyed(&s2_ctx);
-		s2tte_write(&s2tt[wi.index], s2tte);
-	} else {
-		res->x[0] = pack_return_code(RMI_ERROR_RTT,
-						(unsigned char)S2TT_PAGE_LEVEL);
-		goto out_unmap_ll_table;
-	}
-*/
-	/*
-	 * Lock the data granule and check expected state. Correct locking order
-	 * is guaranteed because granule address is obtained from a locked
-	 * granule by table walk. This lock needs to be acquired before a state
-	 * transition to or from GRANULE_STATE_DATA for granule address can happen.
-	 */
 
 /*
  * Update the ripas value for the entry pointed by @s2ttep.

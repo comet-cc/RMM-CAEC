@@ -239,4 +239,12 @@ enum s2_walk_status realm_ipa_get_ripas(struct rec *rec, unsigned long start,
 unsigned long map_ipa_to_pa(struct rd *rd,
                                  unsigned long pa_addr,
                                  unsigned long ipa_addr);
+
+/*
+ * Remove the page-level mapping for ipa_addr from rd's stage-2 RTT,
+ * setting the entry to unassigned_destroyed.  Does not transition the
+ * underlying data granule.
+ */
+void unmap_ipa_from_rd(struct rd *rd, unsigned long ipa_addr);
+
 #endif /* REALM_H */

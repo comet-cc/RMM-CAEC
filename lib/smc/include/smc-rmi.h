@@ -124,6 +124,8 @@
 #define RMI_EXIT_SERROR			U(6)
 #define RMI_EXIT_CSM_REMOVE_GRANULES    U(7)
 #define RMI_EXIT_CSM_ADD_GRANULES       U(8)
+/* Notifies hypervisor to remove a CSM region from a realm's protected address space */
+#define RMI_EXIT_CSM_REALM_REMOVE       U(9)
 
 /* RmiRttEntryState represents the state of an RTTE */
 #define RMI_UNASSIGNED		UL(0)

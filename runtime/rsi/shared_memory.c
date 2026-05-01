@@ -7,6 +7,7 @@
 #include <realm.h>
 #include <ripas.h>
 #include <rsi-handler.h>
+#include <smc-rmi.h>
 #include <smc-rsi.h>
 #include <status.h>
 #include <granule.h>
@@ -16,6 +17,7 @@
 #include <debug.h>
 #include <buffer.h>
 #include <realm_tag.h>
+#include <string.h>
 
 #define OWNER_TAG_MASK_U64  0xFFull
 #define OWNER_TAG_DECODE(x) ((uint8_t)((x) & OWNER_TAG_MASK_U64))
@@ -35,6 +37,8 @@ void handle_rsi_csm_create(struct rec *rec,
 	int region_index = 0;
 	uint8_t region_id = 0U;
 	unsigned long owner_rd_pa = granule_addr(rec->realm_info.g_rd);
+
+	res->action = UPDATE_REC_RETURN_TO_REALM;
 
 	if (size_ipa == 0 || !GRANULE_ALIGNED(base_ipa) || !GRANULE_ALIGNED(size_ipa)) {
             res->smc_res.x[0] = RSI_ERROR_INPUT;
@@ -113,6 +117,15 @@ void handle_rsi_csm_share(struct rec *rec,
 
 	(void)rec_exit;
 
+	res->action = UPDATE_REC_RETURN_TO_REALM;
+
+	if (!realm_tag_get_by_rd(granule_addr(rec->realm_info.g_rd), &master_id) ||
+	    master_id == 0U) {
+		res->smc_res.x[0] = RSI_ERROR_STATE;
+		INFO("csm_share: caller realm has no tag assigned\n");
+		return;
+	}
+
 	if (region_id == 0U || slave_id == 0U) {
 		res->smc_res.x[0] = RSI_ERROR_INPUT;
 		return;
@@ -181,6 +194,8 @@ void handle_rsi_csm_reserve(struct rec *rec,
 	int slave_region_index;
 	unsigned long slave_rd_pa = granule_addr(rec->realm_info.g_rd);
 	uint8_t current_slave_id = 0U;
+
+	res->action = UPDATE_REC_RETURN_TO_REALM;
 
 	if (size_ipa == 0 || !GRANULE_ALIGNED(base_ipa) || !GRANULE_ALIGNED(size_ipa)) {
             res->smc_res.x[0] = RSI_ERROR_INPUT;
@@ -295,11 +310,11 @@ unmap:
 }
 
 
-void handle_rsi_csm_attach(struct rec *rec,
-                                          struct rmi_rec_exit *rec_exit,
-                                          struct rsi_result *res)
+void handle_rsi_csm_attach(struct rec *rec, struct rmi_rec_exit *rec_exit, struct rsi_result *res)
 {
     INFO("handle_rsi_csm_attach called\n");
+
+    res->action = UPDATE_REC_RETURN_TO_REALM;
 
     int region_index = rec->regs[1];
 
@@ -416,108 +431,352 @@ out:
 }
 
 
-void handle_rsi_csm_map(struct rec *rec,
-                              struct rmi_rec_exit *rec_exit,
-                              struct rsi_result *res)
+/*
+ * RSI_CSM_DETACH_AND_FREE (ID 0xe) — called by the C-realm (slave).
+ *
+ * Unmaps all pages in the reserved CSM region from the slave's stage-2 RTT
+ * and removes the slave entry from the slave's APT.  The host is then
+ * notified via RMI_EXIT_CSM_ADD_GRANULES so it can re-populate the master's
+ * IPA range.
+ *
+ * Input:  x1 = sharing_id (region_id | master_id | slave_id)
+ */
+void handle_rsi_csm_detach_and_free(struct rec *rec,
+				    struct rmi_rec_exit *rec_exit,
+				    struct rsi_result *res)
 {
-	//unsigned long block_mapping = rec->regs[3];
-	int region_index = 0;
-	struct rd *slave_rd, *master_rd;
-	struct granule *g_master_rd;
-    unsigned long apt_pa, apt_pa_master;
-    struct s2_walk_result walk_res;
-    unsigned long master_ipa_start, master_ipa_size, master_rd_pa;
-	unsigned long slave_ipa_start, slave_ipa_size;
-	struct granule *g_apt_slave, *g_apt_master;
-        struct apt *apt_slave, *apt_master;
-	unsigned long addr;
- 	enum s2_walk_status walk_status;
-	int master_region_index = -1;
-	uint8_t current_slave_id = 0U;
-	// 1- Finding the target rd and then apt
-    granule_lock(rec->realm_info.g_rd, GRANULE_STATE_RD);
-    slave_rd = buffer_granule_map(rec->realm_info.g_rd, SLOT_RD);
-    assert(slave_rd != NULL);
-    apt_pa = slave_rd->apt_pa;
+	uint32_t sharing_id = (uint32_t)rec->regs[1];
+	uint8_t  region_id  = apt_sharing_region_id(sharing_id);
+	uint8_t  slave_id   = apt_sharing_slave_id(sharing_id);
 
-    g_apt_slave = find_lock_granule(apt_pa, GRANULE_STATE_APT);
-    apt_slave = buffer_granule_map(g_apt_slave, SLOT_APT);
-    assert(apt_slave != NULL);
-    slave_ipa_start = apt_slave->slave_memory[region_index].ipa_start;
-	slave_ipa_size = apt_slave->slave_memory[region_index].map_size;
-	master_rd_pa = apt_slave->slave_memory[region_index].master_rd_pa;
-    INFO("test 5 \n");
-	g_master_rd = find_lock_granule(master_rd_pa, GRANULE_STATE_RD);
-    if (g_master_rd == NULL) {
-        res->smc_res.x[0] = RSI_ERROR_INPUT;
-        return;
-    }
+	uint8_t  caller_id  = 0U;
+	unsigned long slave_rd_pa = granule_addr(rec->realm_info.g_rd);
 
-    master_rd = buffer_granule_map(g_master_rd, SLOT_RD2);
-    assert(master_rd != NULL);
-    apt_pa_master = master_rd->apt_pa;
-	INFO("test \n");
-    g_apt_master = find_lock_granule(apt_pa_master, GRANULE_STATE_APT);
-    apt_master = buffer_granule_map(g_apt_master, SLOT_APT2);
-    assert(apt_master != NULL);
+	struct rd  *slave_rd;
+	struct granule *g_slave_apt;
+	struct apt *slave_apt;
+	unsigned long apt_pa;
 
-	master_region_index = apt_find_master_by_region_id(
-		apt_master, apt_slave->slave_memory[region_index].region_ID);
-	if (master_region_index < 0) {
+	res->action = UPDATE_REC_RETURN_TO_REALM;
+
+	if (sharing_id == 0U || region_id == 0U || slave_id == 0U) {
 		res->smc_res.x[0] = RSI_ERROR_INPUT;
 		return;
 	}
 
-	master_ipa_start = apt_master->master_memory[master_region_index].ipa_start;
-    master_ipa_size = apt_master->master_memory[master_region_index].map_size;
-	INFO("test3 \n");
-	// 2- Check whether the cuurent realm is allowed to map that address into its address space
-
-	addr = granule_addr(rec->realm_info.g_rd);
-	if (!realm_tag_get_by_rd(addr, &current_slave_id) ||
-	    apt_find_master_share_slot(&apt_master->master_memory[master_region_index],
-					       current_slave_id) < 0) {
+	if (!realm_tag_get_by_rd(slave_rd_pa, &caller_id) || caller_id != slave_id) {
 		res->smc_res.x[0] = RSI_ERROR_INPUT;
-		INFO("Mismatching with RD addresses \n");
+		INFO("csm_detach_and_free: caller is not the slave\n");
 		return;
 	}
-	// 3- Checking size compatibility
-	if (master_ipa_size != slave_ipa_size){
-              //  res->smc_res.x[0] = RSI_ERROR_INPUT;
-        INFO("Mismatching with IPA master_ipa_size =0x%lx and slave_ipa_size=0x%lx \n", master_ipa_size, slave_ipa_size);
-        return;
-        }
-	INFO(" apt_master->master_memory[master_region_index].ipa_start = %lx \n",
-	     apt_master->master_memory[master_region_index].ipa_start);
-		// 4- Loop Through IPA range and find the associated PA, then map them in the second realm's page tables. needs to unlock the last level page at the end
-	unsigned long slave_ipa = slave_ipa_start;
-	for (unsigned long master_ipa = master_ipa_start; master_ipa < master_ipa_start + master_ipa_size; master_ipa += 0x1000) {
-		walk_status = realm_ipa_to_pa_with_rd(master_rd, master_ipa, &walk_res);
-		if (walk_status != WALK_SUCCESS) {
-			INFO("Page table walk failed for master_ipa=%lx\n", master_ipa);
-			res->smc_res.x[0] = RSI_ERROR_INPUT;
-			if (walk_res.llt)
-				granule_unlock(walk_res.llt);
-			return;
+
+	granule_lock(rec->realm_info.g_rd, GRANULE_STATE_RD);
+	slave_rd = buffer_granule_map(rec->realm_info.g_rd, SLOT_RD);
+	assert(slave_rd != NULL);
+	apt_pa = slave_rd->apt_pa;
+
+	g_slave_apt = find_lock_granule(apt_pa, GRANULE_STATE_APT);
+	if (g_slave_apt == NULL) {
+		res->smc_res.x[0] = RSI_ERROR_STATE;
+		goto out_rd;
+	}
+
+	slave_apt = buffer_granule_map(g_slave_apt, SLOT_APT);
+	assert(slave_apt != NULL);
+
+	/* Find the slave's entry for this region. */
+	unsigned long slave_ipa_start = 0, slave_map_size = 0;
+	size_t found_idx = SIZE_MAX;
+
+	for (size_t sj = 0; sj < MAX_MEM_REGIONS; sj++) {
+		if ((slave_apt->slave_used_mask & BIT64(sj)) &&
+		    slave_apt->slave_memory[sj].region_ID == region_id) {
+			slave_ipa_start = slave_apt->slave_memory[sj].ipa_start;
+			slave_map_size  = slave_apt->slave_memory[sj].map_size;
+			found_idx = sj;
+			break;
 		}
-		// 5- Mapping the target walk_res.pa to the ipa, do we need to lock the pa during the mapping?
-		// Check for read-only feature of map_ipa_to_pa later
-		map_ipa_to_pa(slave_rd, walk_res.pa, slave_ipa);
-		//INFO("mapped slave_ipa = %lx to phys_addr = %lx \n", slave_ipa, walk_res.pa);
-		slave_ipa += 0x1000;
-		granule_unlock(walk_res.llt);
 	}
-	//} 
-	buffer_unmap(apt_slave);
-	granule_unlock(g_apt_slave);
-	buffer_unmap(apt_master);
-	granule_unlock(g_apt_master);
+
+	if (found_idx == SIZE_MAX) {
+		res->smc_res.x[0] = RSI_ERROR_INPUT;
+		INFO("csm_detach_and_free: region %u not found in slave APT\n", region_id);
+		goto out_apt;
+	}
+
+	/* Remove from APT before unmapping so propagation can't re-add. */
+	apt_disable_slave_idx(slave_apt, found_idx);
+	slave_apt->slave_used_mask &= ~BIT64(found_idx);
+
+	buffer_unmap(slave_apt);
+	granule_unlock(g_slave_apt);
+	g_slave_apt = NULL;
+
+	/* Unmap each page from the slave's RTT. */
+	for (unsigned long ipa = slave_ipa_start;
+	     ipa < slave_ipa_start + slave_map_size;
+	     ipa += GRANULE_SIZE) {
+		unmap_ipa_from_rd(slave_rd, ipa);
+	}
+
+	/* Tell the host to re-populate the master's IPA range. */
+	rec_exit->exit_reason = RMI_EXIT_CSM_ADD_GRANULES;
+	rec_exit->ripas_base  = slave_ipa_start;
+	rec_exit->ripas_top   = slave_ipa_start + slave_map_size;
+	res->action           = UPDATE_REC_EXIT_TO_HOST;
+	res->smc_res.x[0]     = RSI_SUCCESS;
+
 	buffer_unmap(slave_rd);
 	granule_unlock(rec->realm_info.g_rd);
-	buffer_unmap(master_rd);
-	granule_unlock(g_master_rd);
+	return;
+
+out_apt:
+	if (g_slave_apt) {
+		buffer_unmap(slave_apt);
+		granule_unlock(g_slave_apt);
+	}
+out_rd:
+	buffer_unmap(slave_rd);
+	granule_unlock(rec->realm_info.g_rd);
+}
+
+/*
+ * RSI_CSM_REVOKE (ID 0xf) — called by the P-realm (master).
+ *
+ * Revokes a previously granted sharing: removes the slave share slot from the
+ * master's APT, removes the slave's APT entry for this region, and forcibly
+ * unmaps the slave's RTT pages for that region.
+ *
+ * Input:  x1 = sharing_id (region_id | master_id | slave_id)
+ */
+void handle_rsi_csm_revoke(struct rec *rec,
+			   struct rmi_rec_exit *rec_exit,
+			   struct rsi_result *res)
+{
+	uint32_t sharing_id = (uint32_t)rec->regs[1];
+	uint8_t  region_id  = apt_sharing_region_id(sharing_id);
+	uint8_t  master_id  = apt_sharing_master_id(sharing_id);
+	uint8_t  slave_id   = apt_sharing_slave_id(sharing_id);
+
+	uint8_t  caller_id  = 0U;
+	unsigned long master_rd_pa = granule_addr(rec->realm_info.g_rd);
+
+	struct rd  *mrd;
+	struct granule *g_mapt;
+	struct apt *mapt;
+	unsigned long apt_pa;
+
+	(void)rec_exit;
+
 	res->action = UPDATE_REC_RETURN_TO_REALM;
-    res->smc_res.x[0] = RSI_SUCCESS;
+
+	if (sharing_id == 0U || region_id == 0U || master_id == 0U || slave_id == 0U) {
+		res->smc_res.x[0] = RSI_ERROR_INPUT;
+		return;
+	}
+
+	if (!realm_tag_get_by_rd(master_rd_pa, &caller_id) || caller_id != master_id) {
+		res->smc_res.x[0] = RSI_ERROR_INPUT;
+		INFO("csm_revoke: caller is not the master\n");
+		return;
+	}
+
+	granule_lock(rec->realm_info.g_rd, GRANULE_STATE_RD);
+	mrd = buffer_granule_map(rec->realm_info.g_rd, SLOT_RD);
+	assert(mrd != NULL);
+	apt_pa = mrd->apt_pa;
+
+	g_mapt = find_lock_granule(apt_pa, GRANULE_STATE_APT);
+	if (g_mapt == NULL) {
+		res->smc_res.x[0] = RSI_ERROR_STATE;
+		goto out_rd;
+	}
+
+	mapt = buffer_granule_map(g_mapt, SLOT_APT);
+	assert(mapt != NULL);
+
+	int midx = apt_find_master_by_region_id(mapt, region_id);
+	if (midx < 0) {
+		res->smc_res.x[0] = RSI_ERROR_INPUT;
+		INFO("csm_revoke: region %u not found in master APT\n", region_id);
+		goto out_mapt;
+	}
+
+	int share_slot = apt_find_master_share_slot(&mapt->master_memory[midx], slave_id);
+	if (share_slot < 0) {
+		res->smc_res.x[0] = RSI_ERROR_INPUT;
+		INFO("csm_revoke: slave %u not sharing region %u\n", slave_id, region_id);
+		goto out_mapt;
+	}
+
+	unsigned long slave_rd_pa = mapt->master_memory[midx].shares[share_slot].slave_rd_pa;
+
+	/* Remove share slot from master APT now (before touching slave). */
+	mapt->master_memory[midx].shares[share_slot].in_use = false;
+	mapt->master_memory[midx].share_count--;
+
+	buffer_unmap(mapt);
+	granule_unlock(g_mapt);
+	g_mapt = NULL;
+	buffer_unmap(mrd);
+	granule_unlock(rec->realm_info.g_rd);
+
+	/* Now clean up the slave: remove its APT entry and unmap its RTT. */
+	struct granule *g_srd = find_lock_granule(slave_rd_pa, GRANULE_STATE_RD);
+	if (g_srd == NULL)
+		goto done;
+
+	struct rd *srd = buffer_granule_map(g_srd, SLOT_RD);
+	assert(srd != NULL);
+
+	struct granule *g_sapt = find_lock_granule(srd->apt_pa, GRANULE_STATE_APT);
+	if (g_sapt == NULL) {
+		buffer_unmap(srd);
+		granule_unlock(g_srd);
+		goto done;
+	}
+
+	struct apt *sapt = buffer_granule_map(g_sapt, SLOT_APT);
+	assert(sapt != NULL);
+
+	unsigned long slave_ipa_start = 0, slave_map_size = 0;
+	size_t found_idx = SIZE_MAX;
+
+	for (size_t sj = 0; sj < MAX_MEM_REGIONS; sj++) {
+		if ((sapt->slave_used_mask & BIT64(sj)) &&
+		    sapt->slave_memory[sj].region_ID == region_id) {
+			slave_ipa_start = sapt->slave_memory[sj].ipa_start;
+			slave_map_size  = sapt->slave_memory[sj].map_size;
+			found_idx = sj;
+			break;
+		}
+	}
+
+	if (found_idx != SIZE_MAX) {
+		apt_disable_slave_idx(sapt, found_idx);
+		sapt->slave_used_mask &= ~BIT64(found_idx);
+	}
+
+	buffer_unmap(sapt);
+	granule_unlock(g_sapt);
+
+	if (found_idx != SIZE_MAX) {
+		for (unsigned long ipa = slave_ipa_start;
+		     ipa < slave_ipa_start + slave_map_size;
+		     ipa += GRANULE_SIZE) {
+			unmap_ipa_from_rd(srd, ipa);
+		}
+	}
+
+	buffer_unmap(srd);
+	granule_unlock(g_srd);
+
+done:
+	res->action       = UPDATE_REC_RETURN_TO_REALM;
+	res->smc_res.x[0] = RSI_SUCCESS;
+	return;
+
+out_mapt:
+	if (g_mapt) {
+		buffer_unmap(mapt);
+		granule_unlock(g_mapt);
+	}
+out_rd:
+	buffer_unmap(mrd);
+	granule_unlock(rec->realm_info.g_rd);
+}
+
+/*
+ * RSI_CSM_DESTROY (ID 0x10) — called by the P-realm (master).
+ *
+ * Destroys a CSM region identified by region_id.  The region must have no
+ * active shares (share_count == 0); callers must RSI_CSM_REVOKE all slaves
+ * first.  The host is notified via RMI_EXIT_CSM_REALM_REMOVE so it can
+ * reclaim the granules from the master's IPA range.
+ *
+ * Input:  x1 = region_id (as returned by RSI_CSM_CREATE)
+ */
+void handle_rsi_csm_destroy(struct rec *rec,
+			    struct rmi_rec_exit *rec_exit,
+			    struct rsi_result *res)
+{
+	uint8_t region_id = (uint8_t)(rec->regs[1] & 0xFFU);
+
+	struct rd  *mrd;
+	struct granule *g_mapt;
+	struct apt *mapt;
+	unsigned long apt_pa;
+	unsigned long master_rd_pa = granule_addr(rec->realm_info.g_rd);
+
+	res->action = UPDATE_REC_RETURN_TO_REALM;
+
+	if (region_id == 0U) {
+		res->smc_res.x[0] = RSI_ERROR_INPUT;
+		return;
+	}
+
+	granule_lock(rec->realm_info.g_rd, GRANULE_STATE_RD);
+	mrd = buffer_granule_map(rec->realm_info.g_rd, SLOT_RD);
+	assert(mrd != NULL);
+	apt_pa = mrd->apt_pa;
+
+	g_mapt = find_lock_granule(apt_pa, GRANULE_STATE_APT);
+	if (g_mapt == NULL) {
+		res->smc_res.x[0] = RSI_ERROR_STATE;
+		goto out_rd;
+	}
+
+	mapt = buffer_granule_map(g_mapt, SLOT_APT);
+	assert(mapt != NULL);
+
+	int midx = apt_find_master_by_region_id(mapt, region_id);
+	if (midx < 0) {
+		res->smc_res.x[0] = RSI_ERROR_INPUT;
+		INFO("csm_destroy: region %u not found\n", region_id);
+		goto out_mapt;
+	}
+
+	if (mapt->master_memory[midx].share_count != 0U) {
+		res->smc_res.x[0] = RSI_ERROR_STATE;
+		INFO("csm_destroy: region %u still has %u active shares\n",
+		     region_id, mapt->master_memory[midx].share_count);
+		goto out_mapt;
+	}
+
+	unsigned long ipa_start = mapt->master_memory[midx].ipa_start;
+	unsigned long map_size  = mapt->master_memory[midx].map_size;
+
+	/* Remove from APT. */
+	apt_disable_master_idx(mapt, (size_t)midx);
+	mapt->master_used_mask &= ~BIT64((size_t)midx);
+	(void)memset(&mapt->master_memory[midx], 0, sizeof(struct master_mem));
+
+	buffer_unmap(mapt);
+	granule_unlock(g_mapt);
+	buffer_unmap(mrd);
+	granule_unlock(rec->realm_info.g_rd);
+
+	/* Release the globally unique region ID. */
+	(void)csm_region_id_remove(region_id);
+
+	/* Tell the host to reclaim granules from master's IPA range. */
+	rec_exit->exit_reason = RMI_EXIT_CSM_REALM_REMOVE;
+	rec_exit->ripas_base  = ipa_start;
+	rec_exit->ripas_top   = ipa_start + map_size;
+	res->action           = UPDATE_REC_EXIT_TO_HOST;
+	res->smc_res.x[0]     = RSI_SUCCESS;
+
+	INFO("csm_destroy: destroyed region %u at IPA [%lx, %lx)\n",
+	     region_id, ipa_start, ipa_start + map_size);
+	return;
+
+out_mapt:
+	buffer_unmap(mapt);
+	granule_unlock(g_mapt);
+out_rd:
+	buffer_unmap(mrd);
+	granule_unlock(rec->realm_info.g_rd);
+	(void)master_rd_pa;
 }
 
 

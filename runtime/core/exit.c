@@ -457,8 +457,14 @@ static bool handle_realm_rsi(struct rec *rec, struct rmi_rec_exit *rec_exit)
 	case SMC_RSI_CSM_ATTACH:
 		handle_rsi_csm_attach(rec, rec_exit, &res);
 		break;
-	case SMC_RSI_CSM_UNMAP:
-		handle_rsi_csm_map(rec, rec_exit, &res);
+	case SMC_RSI_CSM_DETACH_AND_FREE:
+		handle_rsi_csm_detach_and_free(rec, rec_exit, &res);
+		break;
+	case SMC_RSI_CSM_REVOKE:
+		handle_rsi_csm_revoke(rec, rec_exit, &res);
+		break;
+	case SMC_RSI_CSM_DESTROY:
+		handle_rsi_csm_destroy(rec, rec_exit, &res);
 		break;
 	default:
 		res.action = UPDATE_REC_RETURN_TO_REALM;

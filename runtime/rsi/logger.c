@@ -49,11 +49,13 @@ static const struct rsi_handler rsi_logger[] = {
 	RSI_FUNCTION(_IPA_STATE_SET, 4U, 2U),		/* 0xC4000197 */
 	RSI_FUNCTION(_IPA_STATE_GET, 2U, 2U),		/* 0xC4000198 */
 	RSI_FUNCTION(_HOST_CALL, 1U, 0U),		/* 0xC4000199 */
-	RSI_FUNCTION(_CSM_CREATE, 4U, 2U),      /* 0xC400019a */
-	RSI_FUNCTION(_CSM_SHARE, 4U, 2U),       /* 0xC400019b */
-	RSI_FUNCTION(_CSM_RESERVE, 4U, 2U),     /* 0xC400019c */
-	RSI_FUNCTION(_CSM_ATTACH, 4U, 2U),      /* 0xC400019d */
-	RSI_FUNCTION(_CSM_UNMAP, 4U, 2U)        /* 0xC400019e */
+	RSI_FUNCTION(_CSM_CREATE, 4U, 2U),           /* 0xC400019a */
+	RSI_FUNCTION(_CSM_SHARE, 4U, 2U),            /* 0xC400019b */
+	RSI_FUNCTION(_CSM_RESERVE, 4U, 2U),          /* 0xC400019c */
+	RSI_FUNCTION(_CSM_ATTACH, 4U, 2U),           /* 0xC400019d */
+	RSI_FUNCTION(_CSM_DETACH_AND_FREE, 2U, 0U),  /* 0xC400019e */
+	RSI_FUNCTION(_CSM_REVOKE, 2U, 0U),           /* 0xC400019f */
+	RSI_FUNCTION(_CSM_DESTROY, 2U, 0U),          /* 0xC40001a0 */
 };
 
 #define RSI_STATUS_STRING(_id)[RSI_##_id] = #_id
@@ -80,7 +82,7 @@ static size_t print_entry(unsigned int id, unsigned long args[],
 	int cnt;
 
 	switch (id) {
-	case SMC_RSI_VERSION ... SMC_RSI_CSM_UNMAP: {
+	case SMC_RSI_VERSION ... SMC_RSI_CSM_DESTROY: {
 		const struct rsi_handler *logger = fid_to_rsi_logger(id);
 		num = logger->num_args;
 		cnt = snprintf(buf, MAX_NAME_LEN + 1UL,
@@ -147,7 +149,7 @@ void rsi_log_on_exit(unsigned int function_id, unsigned long args[],
 	int cnt;
 
 	switch (function_id) {
-	case SMC_RSI_VERSION ... SMC_RSI_HOST_CALL: {
+	case SMC_RSI_VERSION ... SMC_RSI_CSM_DESTROY: {
 		const struct rsi_handler *logger =
 				fid_to_rsi_logger(function_id);
 

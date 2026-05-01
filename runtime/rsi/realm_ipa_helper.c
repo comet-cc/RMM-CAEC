@@ -272,17 +272,72 @@ unsigned long map_ipa_to_pa(struct rd *rd,
 
     s2tte = s2tte_read(&s2tt[wi.index]);
     
-	//if (s2tte_is_assigned_ram(s2_ctx, s2tte, wi.last_level)) {
-        /* Replace with a mapping to pa_addr as RAM */
-    	s2tte = s2tte_create_assigned_ram(s2_ctx, pa_addr, S2TT_PAGE_LEVEL);
-        s2tte_write(&s2tt[wi.index], s2tte);
-        /* Invalidate TLB for that IPA */
-        s2tt_invalidate_page(s2_ctx, ipa_addr);
-  // }
+	/*
+	 * Write assigned_ram entry and bump the L3 RTT's refcount to match
+	 * what smc_data_create does.  smc_data_destroy always calls
+	 * atomic_granule_put(wi.g_llt); without a paired get here, any
+	 * subsequent destroy of this IPA will underflow the refcount.
+	 */
+	s2tte = s2tte_create_assigned_ram(s2_ctx, pa_addr, S2TT_PAGE_LEVEL);
+	s2tte_write(&s2tt[wi.index], s2tte);
+	s2tt_invalidate_page(s2_ctx, ipa_addr);
+	atomic_granule_get(wi.g_llt);
 
     buffer_unmap(s2tt);
     granule_unlock(wi.g_llt);
     return 0;
+}
+
+/*
+ * Remove the page-level mapping for ipa_addr from rd's stage-2 RTT.
+ * If the entry is assigned_ram, it is replaced with unassigned_destroyed
+ * and the TLB is invalidated.  The data granule itself is NOT transitioned
+ * (the caller is responsible for granule lifecycle).
+ */
+void unmap_ipa_from_rd(struct rd *rd, unsigned long ipa_addr)
+{
+	const struct s2tt_context *s2_ctx = &(rd->s2_ctx);
+	struct s2tt_walk wi;
+	unsigned long *s2tt;
+	unsigned long s2tte;
+
+	granule_lock(s2_ctx->g_rtt, GRANULE_STATE_RTT);
+	s2tt_walk_lock_unlock(s2_ctx, ipa_addr, S2TT_PAGE_LEVEL, &wi);
+
+	if (wi.last_level != S2TT_PAGE_LEVEL) {
+		granule_unlock(wi.g_llt);
+		return;
+	}
+
+	s2tt = buffer_granule_map(wi.g_llt, SLOT_RTT);
+	assert(s2tt != NULL);
+
+	s2tte = s2tte_read(&s2tt[wi.index]);
+
+	/*
+	 * Clear any assigned entry (ram/destroyed/empty) to its unassigned
+	 * counterpart and decrement the L3 RTT's refcount, mirroring the put
+	 * in smc_data_destroy.  This is necessary for entries written by
+	 * map_ipa_to_pa (which increments the refcount) as well as entries
+	 * that transitioned via RIPAS_CHANGE after the CSM mapping was set up.
+	 */
+	if (s2tte_is_assigned_ram(s2_ctx, s2tte, S2TT_PAGE_LEVEL)) {
+		s2tte = s2tte_create_unassigned_destroyed(s2_ctx);
+		s2tte_write(&s2tt[wi.index], s2tte);
+		s2tt_invalidate_page(s2_ctx, ipa_addr);
+		atomic_granule_put(wi.g_llt);
+	} else if (s2tte_is_assigned_destroyed(s2_ctx, s2tte, S2TT_PAGE_LEVEL)) {
+		s2tte = s2tte_create_unassigned_destroyed(s2_ctx);
+		s2tte_write(&s2tt[wi.index], s2tte);
+		atomic_granule_put(wi.g_llt);
+	} else if (s2tte_is_assigned_empty(s2_ctx, s2tte, S2TT_PAGE_LEVEL)) {
+		s2tte = s2tte_create_unassigned_empty(s2_ctx);
+		s2tte_write(&s2tt[wi.index], s2tte);
+		atomic_granule_put(wi.g_llt);
+	}
+
+	buffer_unmap(s2tt);
+	granule_unlock(wi.g_llt);
 }
 
 #define ALIGN_2MB (2UL * 1024 * 1024)

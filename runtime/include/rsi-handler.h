@@ -103,6 +103,10 @@ void handle_rsi_csm_reserve(struct rec *rec, struct rmi_rec_exit *rec_exit,
                  struct rsi_result *res);
 void handle_rsi_csm_attach(struct rec *rec, struct rmi_rec_exit *rec_exit,
                  struct rsi_result *res);
-void handle_rsi_csm_map(struct rec *rec, struct rmi_rec_exit *rec_exit,
+void handle_rsi_csm_detach_and_free(struct rec *rec, struct rmi_rec_exit *rec_exit,
+                 struct rsi_result *res);
+void handle_rsi_csm_revoke(struct rec *rec, struct rmi_rec_exit *rec_exit,
+                 struct rsi_result *res);
+void handle_rsi_csm_destroy(struct rec *rec, struct rmi_rec_exit *rec_exit,
                  struct rsi_result *res);
 #endif /* RSI_HANDLER_H */
